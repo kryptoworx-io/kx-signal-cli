@@ -17,7 +17,7 @@ publishing {
         create<MavenPublication>("maven") {
             groupId = "io.kryptoworx.signalcli"
             artifactId = "kx-signalcli"
-            version = "1.0.0"
+            version = "0.8.5"
 
             from(components["java"])
         }
