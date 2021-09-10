@@ -33,7 +33,7 @@ dependencies. If you have a recent gradle version installed, you can replace `./
 
 1. Checkout the source somewhere on your filesystem with
 
-        git clone https://github.com/AsamK/signal-cli.git
+        git clone https://github.com/kryptoworx-io/signal-cli
 
 2. Execute Gradle:
 
