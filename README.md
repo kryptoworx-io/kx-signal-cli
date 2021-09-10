@@ -19,7 +19,12 @@ System requirements:
 
 
 ## Usage
-
+The API is exposed via the interface SignalCLI. 
+Example: 
+```java
+SignalCLI signalCLI = SignalCLIFactory.INSTANCE.getSignalCLI();
+signalCLI.send("test123", "+43123123123");
+```
 
 ## Building
 
