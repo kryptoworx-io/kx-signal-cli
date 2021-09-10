@@ -23,6 +23,7 @@ import org.asamk.signal.manager.helper.PinHelper;
 import org.asamk.signal.manager.storage.SignalAccount;
 import org.asamk.signal.manager.storage.identities.TrustNewIdentity;
 import org.asamk.signal.manager.util.KeyUtils;
+import org.asamk.signal.util.IOUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.whispersystems.libsignal.util.KeyHelper;
@@ -89,6 +90,39 @@ public class RegistrationManager implements Closeable {
                 10);
         this.pinHelper = new PinHelper(keyBackupService);
     }
+    
+    public static RegistrationManager initInternal(String username)
+    					throws Exception{
+    	String userAgent = "Signal-Android/5.22.3 signal-cli";
+    	var pathConfig = PathConfig.createDefault(getDefaultDataPath());
+        final var serviceConfiguration = ServiceConfig.getServiceEnvironmentConfig(ServiceEnvironment.LIVE, userAgent);
+        
+        if (!SignalAccount.userExists(pathConfig.getDataPath(), username)) {
+            var identityKey = KeyUtils.generateIdentityKeyPair();
+            var registrationId = KeyHelper.generateRegistrationId(false);
+
+            var profileKey = KeyUtils.createProfileKey();
+            var account = SignalAccount.create(pathConfig.getDataPath(),
+                    username,
+                    identityKey,
+                    registrationId,
+                    profileKey,
+                    TrustNewIdentity.ON_FIRST_USE);
+            
+            return new RegistrationManager(account,  pathConfig, serviceConfiguration, userAgent);
+        }
+
+        var account = SignalAccount.load(pathConfig.getDataPath(), username, true, TrustNewIdentity.ON_FIRST_USE);
+
+        return new RegistrationManager(account, pathConfig, serviceConfiguration, userAgent);
+    }
+    
+    /**
+     * @return the default data directory to be used by signal-cli.
+     */
+    private static File getDefaultDataPath() {
+        return new File(IOUtils.getDataHomeDir(), "signal-cli");
+    }
 
     public static RegistrationManager init(
             String username, File settingsPath, ServiceEnvironment serviceEnvironment, String userAgent
@@ -115,6 +149,8 @@ public class RegistrationManager implements Closeable {
 
         return new RegistrationManager(account, pathConfig, serviceConfiguration, userAgent);
     }
+    
+   
 
     public void register(boolean voiceVerification, String captcha) throws IOException {
         final ServiceResponse<RequestVerificationCodeResponse> response;

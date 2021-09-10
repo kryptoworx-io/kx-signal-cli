@@ -1,0 +1,87 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+	<groupId>io.kryptoworx.signalcli</groupId>
+	<artifactId>kx-signalcli</artifactId>
+	<version>1.0.0-SNAPSHOT</version>
+	<packaging>bundle</packaging>
+
+	<properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <maven.compiler.source>16</maven.compiler.source>
+        <maven.compiler.target>16</maven.compiler.target>
+        <maven.deploy.skip>true</maven.deploy.skip>
+    </properties>	
+    
+    <dependencies>
+    	<dependency>
+    		<groupId>org.bouncycastle</groupId>
+    		<artifactId>bcprov-jdk15on</artifactId>
+    		<version>1.69</version>
+    	</dependency>
+    	<dependency>
+    		<groupId>net.sourceforge.argparse4j</groupId>
+    		<artifactId>argparse4j</artifactId>
+    		<version>0.9.0</version>
+    	</dependency>
+    	<dependency>
+    		<groupId>com.github.hypfvieh</groupId>
+    		<artifactId>dbus-java</artifactId>
+    		<version>3.3.0</version>
+    	</dependency>
+    	<dependency>
+    		<groupId>org.slf4j</groupId>
+    		<artifactId>slf4j-simple</artifactId>
+    		<version>1.7.30</version>
+    	</dependency>
+    	<dependency>
+    		<groupId>com.github.turasa</groupId>
+    		<artifactId>signal-service-java</artifactId>
+    		<version>2.15.3_unofficial_27</version>
+    	</dependency>
+    	<dependency>
+    		<groupId>com.google.protobuf</groupId>
+    		<artifactId>protobuf-javalite</artifactId>
+    		<version>3.10.0</version>
+    	</dependency>
+    </dependencies>
+    
+   	<build>
+   		
+		<plugins>
+			 <plugin>
+		        <groupId>org.codehaus.mojo</groupId>
+		        <artifactId>build-helper-maven-plugin</artifactId>
+		        <version>3.2.0</version>
+		        <executions>
+		          <execution>
+		            <id>add-source</id>
+		            <phase>generate-sources</phase>
+		            <goals>
+		              <goal>add-source</goal>
+		            </goals>
+		            <configuration>
+		              <sources>
+		                <source>lib/src</source>
+		                
+		              </sources>
+		            </configuration>
+		          </execution>
+		        </executions>
+		      </plugin>
+	        <plugin>
+    			<groupId>org.apache.felix</groupId>
+    			<artifactId>maven-bundle-plugin</artifactId>
+    			<extensions>true</extensions>
+    			<configuration>
+      			<instructions>
+        			<Export-Package>io.kryptoworx.signalcli.api</Export-Package>
+        			<!-- <Private-Package>org.foo.myproject.*</Private-Package>-->
+        			
+      			</instructions>
+    			</configuration>
+  			</plugin>
+		</plugins>
+	</build>
+</project>

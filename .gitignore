@@ -6,8 +6,7 @@ build/
 *.swp
 *.iml
 local.properties
-.classpath
-.project
 .settings/
 out/
 .DS_Store
+target/
