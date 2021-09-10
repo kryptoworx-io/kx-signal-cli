@@ -3,11 +3,9 @@ Bundle-ManifestVersion: 2
 Bundle-Name: Kx-signal-plugin
 Bundle-SymbolicName: kx-signal-plugin
 Bundle-Version: 1.0.0.qualifier
-Bundle-Activator: kx_signal_plugin.Activator
 Export-Package: io.kryptoworx.signalcli.api
 Require-Bundle: org.eclipse.core.runtime
 Bundle-RequiredExecutionEnvironment: JavaSE-16
-Bundle-ActivationPolicy: lazy
 Bundle-NativeCode: libsignal_jni.dylib; osname=MacOSX; processor=x86-64
 Import-Package: com.fasterxml.jackson.annotation;version="2.12.3",
  com.fasterxml.jackson.core;version="2.12.3",
