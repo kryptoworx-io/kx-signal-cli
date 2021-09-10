@@ -16,7 +16,10 @@ System requirements:
   Those are bundled for x86_64 Linux (with recent enough glibc, see #643), for other systems/architectures see: [Provide native lib for libsignal](https://github.com/AsamK/signal-cli/wiki/Provide-native-lib-for-libsignal)
 
 ### Publish to local maven repo
-```./gradlew publishToMavenLocal
+
+```sh
+./gradlew publishToMavenLocal
+```
 
 ### Install system-wide on Linux
 See [latest version](https://github.com/AsamK/signal-cli/releases).
