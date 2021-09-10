@@ -1,8 +1,8 @@
 plugins {
+    java
+    application
     eclipse
     `check-lib-versions`
-    id("biz.aQute.bnd.builder") version "5.3.0"
-    `maven-publish`
 }
 
 version = "0.8.5"
@@ -12,16 +12,8 @@ java {
     targetCompatibility = JavaVersion.VERSION_11
 }
 
-publishing {
-    publications {
-        create<MavenPublication>("maven") {
-            groupId = "io.kryptoworx.signalcli"
-            artifactId = "kx-signalcli"
-            version = "0.8.5"
-
-            from(components["java"])
-        }
-    }
+application {
+    mainClass.set("org.asamk.signal.Main")
 }
 
 repositories {
@@ -55,8 +47,12 @@ tasks.withType<JavaCompile> {
 
 tasks.withType<Jar> {
     manifest {
-        attributes("-exportcontents" to "io.kryptoworx.signalcli.api.*")
-	}
+        attributes(
+            "Implementation-Title" to project.name,
+            "Implementation-Version" to project.version,
+            "Main-Class" to application.mainClass.get()
+        )
+    }
 }
 
 tasks.withType<JavaExec> {
@@ -101,10 +97,8 @@ val assembleNativeImage by tasks.registering {
                 "--enable-all-security-services",
                 "-cp",
                 sourceSets.main.get().runtimeClasspath.asPath,
-                //application.mainClass.get()
+                application.mainClass.get()
             )
         }
     }
 }
-
-
