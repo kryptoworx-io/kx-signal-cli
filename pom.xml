@@ -73,13 +73,16 @@
 	        <plugin>
     			<groupId>org.apache.felix</groupId>
     			<artifactId>maven-bundle-plugin</artifactId>
+    			<version>5.1.2</version>
     			<extensions>true</extensions>
     			<configuration>
-      			<instructions>
-        			<Export-Package>io.kryptoworx.signalcli.api</Export-Package>
-        			<!-- <Private-Package>org.foo.myproject.*</Private-Package>-->
-        			
-      			</instructions>
+                    <archive>
+                        <addMavenDescriptor>false</addMavenDescriptor>
+                    </archive>
+	      			<instructions>
+    	    			<Export-Package>io.kryptoworx.signalcli.api</Export-Package>
+        				<!-- <Private-Package>org.foo.myproject.*</Private-Package>-->
+      				</instructions>
     			</configuration>
   			</plugin>
 		</plugins>
