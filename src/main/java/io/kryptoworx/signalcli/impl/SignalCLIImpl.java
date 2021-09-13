@@ -23,7 +23,7 @@ public class SignalCLIImpl implements SignalCLI {
 		    Security.addProvider(new BouncyCastleProvider());
 			registrationManager = RegistrationManager.initInternal("+4368120784581");
 			
-			var m = loadManager("+4368120784581", dataPath, serviceEnvironment, trustNewIdentity
+			//var m = loadManager("+4368120784581", dataPath, serviceEnvironment, trustNewIdentity
 			
 		} catch (Exception e) {
 			// TODO Auto-generated catch block
