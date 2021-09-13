@@ -29,8 +29,10 @@ public class SignalCLIImpl implements SignalCLI {
     @Override
     public void register(final String number) {
     	System.out.println("in register for number: " + number);
+    	// TODO remove when FCM is integrated.
+    	String captcha = System.getProperty("captcha");
     	try {
-			registrationManager.register(false, null);
+			registrationManager.register(false, captcha);
 		} catch (IOException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
