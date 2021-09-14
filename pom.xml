@@ -5,7 +5,7 @@
 	<groupId>io.kryptoworx.signalcli</groupId>
 	<artifactId>kx-signalcli</artifactId>
 	<version>1.0.0-SNAPSHOT</version>
-	<packaging>bundle</packaging>
+	<packaging>jar</packaging>
 
 	<properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -45,6 +45,11 @@
     		<artifactId>protobuf-javalite</artifactId>
     		<version>3.10.0</version>
     	</dependency>
+	<dependency>
+    		<groupId>io.kryptoworx</groupId>
+    		<artifactId>gcm-client</artifactId>
+    		<version>1.0.0-SNAPSHOT</version>
+    	</dependency>
     </dependencies>
     
    	<build>
@@ -64,27 +69,11 @@
 		            <configuration>
 		              <sources>
 		                <source>lib/src</source>
-		                
 		              </sources>
 		            </configuration>
 		          </execution>
 		        </executions>
 		      </plugin>
-	        <plugin>
-    			<groupId>org.apache.felix</groupId>
-    			<artifactId>maven-bundle-plugin</artifactId>
-    			<version>5.1.2</version>
-    			<extensions>true</extensions>
-    			<configuration>
-                    <archive>
-                        <addMavenDescriptor>false</addMavenDescriptor>
-                    </archive>
-	      			<instructions>
-    	    			<Export-Package>io.kryptoworx.signalcli.api</Export-Package>
-        				<!-- <Private-Package>org.foo.myproject.*</Private-Package>-->
-      				</instructions>
-    			</configuration>
-  			</plugin>
 		</plugins>
 	</build>
 </project>
