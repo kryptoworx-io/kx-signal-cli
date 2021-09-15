@@ -6,22 +6,19 @@ import java.security.Security;
 import org.asamk.signal.manager.RegistrationManager;
 import org.asamk.signal.util.SecurityProvider;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
-import org.whispersystems.signalservice.api.KeyBackupServicePinException;
-import org.whispersystems.signalservice.api.KeyBackupSystemNoDataException;
-import org.whispersystems.signalservice.internal.push.LockedException;
 
 import io.kryptoworx.signalcli.api.SignalCLI;
 
 public class SignalCLIImpl implements SignalCLI {
 	
-	RegistrationManager registrationManager = null;
+	private RegistrationManager registrationManager;
 	
 	public SignalCLIImpl() {
 		try {
 			Security.setProperty("crypto.policy", "unlimited");
 			Security.insertProviderAt(new SecurityProvider(), 1);
 		    Security.addProvider(new BouncyCastleProvider());
-			registrationManager = RegistrationManager.initInternal("+4368120784581");
+			registrationManager = RegistrationManager.initInternal("+4368120550819");
 			
 			//var m = loadManager("+4368120784581", dataPath, serviceEnvironment, trustNewIdentity
 			
@@ -71,7 +68,14 @@ public class SignalCLIImpl implements SignalCLI {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
-	} 
+    }
+
+
+    @Override
+    public void init(String number) throws Exception {
+        // TODO Auto-generated method stub
+        
+    } 
 
 	
 }

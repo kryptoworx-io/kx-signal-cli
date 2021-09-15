@@ -5,6 +5,7 @@ import io.kryptoworx.signalcli.impl.SignalCLIImpl;
 public class SignalCLIFactory {
 	
 	public static SignalCLIFactory INSTANCE = new SignalCLIFactory();
+	
 	private SignalCLI signalCLI;
 	
 	private SignalCLIFactory() {

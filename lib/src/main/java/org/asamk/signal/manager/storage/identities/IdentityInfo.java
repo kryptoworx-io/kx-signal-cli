@@ -13,7 +13,7 @@ public class IdentityInfo {
     private final TrustLevel trustLevel;
     private final Date added;
 
-    IdentityInfo(
+    public IdentityInfo(
             final RecipientId recipientId, IdentityKey identityKey, TrustLevel trustLevel, Date added
     ) {
         this.recipientId = recipientId;
@@ -34,7 +34,7 @@ public class IdentityInfo {
         return this.trustLevel;
     }
 
-    boolean isTrusted() {
+    public boolean isTrusted() {
         return trustLevel == TrustLevel.TRUSTED_UNVERIFIED || trustLevel == TrustLevel.TRUSTED_VERIFIED;
     }
 

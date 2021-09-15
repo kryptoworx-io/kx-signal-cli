@@ -12,7 +12,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 
-public class PreKeyStore implements org.whispersystems.libsignal.state.PreKeyStore {
+public class PreKeyStore implements org.whispersystems.libsignal.state.PreKeyStore, IPreKeyStore {
 
     private final static Logger logger = LoggerFactory.getLogger(PreKeyStore.class);
 

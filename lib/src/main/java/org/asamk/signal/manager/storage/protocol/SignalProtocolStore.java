@@ -1,42 +1,42 @@
 package org.asamk.signal.manager.storage.protocol;
 
-import org.whispersystems.libsignal.IdentityKey;
-import org.whispersystems.libsignal.IdentityKeyPair;
-import org.whispersystems.libsignal.InvalidKeyIdException;
-import org.whispersystems.libsignal.NoSessionException;
-import org.whispersystems.libsignal.SignalProtocolAddress;
-import org.whispersystems.libsignal.groups.state.SenderKeyRecord;
-import org.whispersystems.libsignal.state.IdentityKeyStore;
-import org.whispersystems.libsignal.state.PreKeyRecord;
-import org.whispersystems.libsignal.state.PreKeyStore;
-import org.whispersystems.libsignal.state.SessionRecord;
-import org.whispersystems.libsignal.state.SignedPreKeyRecord;
-import org.whispersystems.libsignal.state.SignedPreKeyStore;
-import org.whispersystems.signalservice.api.SignalServiceDataStore;
-import org.whispersystems.signalservice.api.SignalServiceSenderKeyStore;
-import org.whispersystems.signalservice.api.SignalServiceSessionStore;
-import org.whispersystems.signalservice.api.push.DistributionId;
-
 import java.util.Collection;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
 
+import org.asamk.signal.manager.storage.identities.IIdentityKeyStore;
+import org.asamk.signal.manager.storage.prekeys.IPreKeyStore;
+import org.asamk.signal.manager.storage.prekeys.ISignedPreKeyStore;
+import org.whispersystems.libsignal.IdentityKey;
+import org.whispersystems.libsignal.IdentityKeyPair;
+import org.whispersystems.libsignal.InvalidKeyIdException;
+import org.whispersystems.libsignal.NoSessionException;
+import org.whispersystems.libsignal.SignalProtocolAddress;
+import org.whispersystems.libsignal.groups.state.SenderKeyRecord;
+import org.whispersystems.libsignal.state.PreKeyRecord;
+import org.whispersystems.libsignal.state.SessionRecord;
+import org.whispersystems.libsignal.state.SignedPreKeyRecord;
+import org.whispersystems.signalservice.api.SignalServiceDataStore;
+import org.whispersystems.signalservice.api.SignalServiceSenderKeyStore;
+import org.whispersystems.signalservice.api.SignalServiceSessionStore;
+import org.whispersystems.signalservice.api.push.DistributionId;
+
 public class SignalProtocolStore implements SignalServiceDataStore {
 
-    private final PreKeyStore preKeyStore;
-    private final SignedPreKeyStore signedPreKeyStore;
+    private final IPreKeyStore preKeyStore;
+    private final ISignedPreKeyStore signedPreKeyStore;
     private final SignalServiceSessionStore sessionStore;
-    private final IdentityKeyStore identityKeyStore;
+    private final IIdentityKeyStore identityKeyStore;
     private final SignalServiceSenderKeyStore senderKeyStore;
     private final Supplier<Boolean> isMultiDevice;
 
     public SignalProtocolStore(
-            final PreKeyStore preKeyStore,
-            final SignedPreKeyStore signedPreKeyStore,
+            final IPreKeyStore preKeyStore,
+            final ISignedPreKeyStore signedPreKeyStore,
             final SignalServiceSessionStore sessionStore,
-            final IdentityKeyStore identityKeyStore,
+            final IIdentityKeyStore identityKeyStore,
             final SignalServiceSenderKeyStore senderKeyStore,
             final Supplier<Boolean> isMultiDevice
     ) {

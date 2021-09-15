@@ -3,7 +3,8 @@ Bundle-ManifestVersion: 2
 Bundle-Name: Kx-signal-plugin
 Bundle-SymbolicName: kx-signal-plugin
 Bundle-Version: 1.0.0.qualifier
-Export-Package: io.kryptoworx.signalcli.api
+Export-Package: io.kryptoworx.signalcli.api,
+ org.asamk.signal
 Bundle-RequiredExecutionEnvironment: JavaSE-16
 Import-Package: com.fasterxml.jackson.annotation;version="2.12.3",
  com.fasterxml.jackson.core;version="2.12.3",
@@ -37,6 +38,7 @@ Import-Package: com.fasterxml.jackson.annotation;version="2.12.3",
  org.freedesktop.dbus.exceptions,
  org.freedesktop.dbus.interfaces,
  org.freedesktop.dbus.messages,
+ org.hsqldb.jdbc,
  org.reactivestreams;version="1.0.3",
  org.signal.client.internal,
  org.signal.libsignal.metadata,
@@ -89,3 +91,6 @@ Import-Package: com.fasterxml.jackson.annotation;version="2.12.3",
  org.whispersystems.signalservice.internal.websocket,
  org.whispersystems.util
 Automatic-Module-Name: kx.signal.plugin
+Require-Bundle: org.signal.zkgroup-java;bundle-version="0.7.3",
+ com.github.turasa.signal-service-java;bundle-version="2.15.3",
+ org.whispersystems.signal-client-java;bundle-version="0.9.0"

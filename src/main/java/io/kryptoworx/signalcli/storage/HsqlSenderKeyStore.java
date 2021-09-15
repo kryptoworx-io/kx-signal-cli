@@ -1,31 +1,26 @@
-package org.asamk.signal.manager.storage.senderKeys;
+package io.kryptoworx.signalcli.storage;
 
-import org.asamk.signal.manager.helper.RecipientAddressResolver;
-import org.asamk.signal.manager.storage.recipients.RecipientId;
-import org.asamk.signal.manager.storage.recipients.RecipientResolver;
-import org.whispersystems.libsignal.SignalProtocolAddress;
-import org.whispersystems.libsignal.groups.state.SenderKeyRecord;
-import org.whispersystems.signalservice.api.push.DistributionId;
-
-import java.io.File;
-import java.io.IOException;
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.util.Collection;
 import java.util.Set;
 import java.util.UUID;
 
-public class SenderKeyStore implements ISenderKeyStore {
+import org.asamk.signal.manager.storage.recipients.RecipientId;
+import org.asamk.signal.manager.storage.recipients.RecipientResolver;
+import org.asamk.signal.manager.storage.senderKeys.ISenderKeyStore;
+import org.whispersystems.libsignal.SignalProtocolAddress;
+import org.whispersystems.libsignal.groups.state.SenderKeyRecord;
+import org.whispersystems.signalservice.api.push.DistributionId;
 
-    private final SenderKeyRecordStore senderKeyRecordStore;
-    private final SenderKeySharedStore senderKeySharedStore;
+public class HsqlSenderKeyStore implements ISenderKeyStore {
 
-    public SenderKeyStore(
-            final File file,
-            final File senderKeysPath,
-            final RecipientAddressResolver addressResolver,
-            final RecipientResolver resolver
-    ) throws IOException {
-        this.senderKeyRecordStore = new SenderKeyRecordStore(senderKeysPath, resolver);
-        this.senderKeySharedStore = SenderKeySharedStore.load(file, addressResolver, resolver);
+    private final HsqlSenderKeyRecordStore senderKeyRecordStore;
+    private final HsqlSenderKeySharedStore senderKeySharedStore;
+
+    public HsqlSenderKeyStore(SQLConnectionFactory connectionFactory, RecipientResolver resolver) {
+        this.senderKeyRecordStore = new HsqlSenderKeyRecordStore(connectionFactory, resolver);
+        this.senderKeySharedStore = new HsqlSenderKeySharedStore(connectionFactory, resolver);
     }
 
     @Override
@@ -67,8 +62,9 @@ public class SenderKeyStore implements ISenderKeyStore {
         senderKeyRecordStore.deleteAllFor(recipientId);
     }
 
-    public void mergeRecipients(RecipientId recipientId, RecipientId toBeMergedRecipientId) {
-        senderKeySharedStore.mergeRecipients(recipientId, toBeMergedRecipientId);
-        senderKeyRecordStore.mergeRecipients(recipientId, toBeMergedRecipientId);
+    @Override
+    public void mergeRecipients(Connection connection, long recipientId, long toBeMergedRecipientId) throws SQLException {
+        senderKeySharedStore.mergeRecipients(connection, recipientId, toBeMergedRecipientId);
+        senderKeyRecordStore.mergeRecipients(connection, recipientId, toBeMergedRecipientId);
     }
 }

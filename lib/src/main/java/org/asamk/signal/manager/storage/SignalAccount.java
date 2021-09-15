@@ -1,7 +1,22 @@
 package org.asamk.signal.manager.storage;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.Closeable;
+import java.io.File;
+import java.io.IOException;
+import java.io.RandomAccessFile;
+import java.nio.channels.Channels;
+import java.nio.channels.ClosedChannelException;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.util.Base64;
+import java.util.Date;
+import java.util.HashSet;
+import java.util.List;
+import java.util.UUID;
 
 import org.asamk.signal.manager.TrustLevel;
 import org.asamk.signal.manager.groups.GroupId;
@@ -9,9 +24,12 @@ import org.asamk.signal.manager.storage.contacts.ContactsStore;
 import org.asamk.signal.manager.storage.contacts.LegacyJsonContactsStore;
 import org.asamk.signal.manager.storage.groups.GroupInfoV1;
 import org.asamk.signal.manager.storage.groups.GroupStore;
+import org.asamk.signal.manager.storage.identities.IIdentityKeyStore;
 import org.asamk.signal.manager.storage.identities.IdentityKeyStore;
 import org.asamk.signal.manager.storage.identities.TrustNewIdentity;
 import org.asamk.signal.manager.storage.messageCache.MessageCache;
+import org.asamk.signal.manager.storage.prekeys.IPreKeyStore;
+import org.asamk.signal.manager.storage.prekeys.ISignedPreKeyStore;
 import org.asamk.signal.manager.storage.prekeys.PreKeyStore;
 import org.asamk.signal.manager.storage.prekeys.SignedPreKeyStore;
 import org.asamk.signal.manager.storage.profiles.LegacyProfileStore;
@@ -19,17 +37,23 @@ import org.asamk.signal.manager.storage.profiles.ProfileStore;
 import org.asamk.signal.manager.storage.protocol.LegacyJsonSignalProtocolStore;
 import org.asamk.signal.manager.storage.protocol.SignalProtocolStore;
 import org.asamk.signal.manager.storage.recipients.Contact;
+import org.asamk.signal.manager.storage.recipients.IRecipientStore;
 import org.asamk.signal.manager.storage.recipients.LegacyRecipientStore;
 import org.asamk.signal.manager.storage.recipients.Profile;
 import org.asamk.signal.manager.storage.recipients.RecipientAddress;
 import org.asamk.signal.manager.storage.recipients.RecipientId;
+import org.asamk.signal.manager.storage.recipients.RecipientMergeHandler;
+import org.asamk.signal.manager.storage.recipients.RecipientResolver;
 import org.asamk.signal.manager.storage.recipients.RecipientStore;
+import org.asamk.signal.manager.storage.senderKeys.ISenderKeyStore;
 import org.asamk.signal.manager.storage.senderKeys.SenderKeyStore;
+import org.asamk.signal.manager.storage.sessions.ISessionStore;
 import org.asamk.signal.manager.storage.sessions.SessionStore;
 import org.asamk.signal.manager.storage.stickers.StickerStore;
 import org.asamk.signal.manager.storage.threads.LegacyJsonThreadStore;
 import org.asamk.signal.manager.util.IOUtils;
 import org.asamk.signal.manager.util.KeyUtils;
+import org.hsqldb.jdbc.JDBCPool;
 import org.signal.zkgroup.InvalidInputException;
 import org.signal.zkgroup.profiles.ProfileKey;
 import org.slf4j.Logger;
@@ -47,26 +71,28 @@ import org.whispersystems.signalservice.api.push.SignalServiceAddress;
 import org.whispersystems.signalservice.api.storage.StorageKey;
 import org.whispersystems.signalservice.api.util.UuidUtil;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.Closeable;
-import java.io.File;
-import java.io.IOException;
-import java.io.RandomAccessFile;
-import java.nio.channels.Channels;
-import java.nio.channels.ClosedChannelException;
-import java.nio.channels.FileChannel;
-import java.nio.channels.FileLock;
-import java.util.Base64;
-import java.util.Date;
-import java.util.HashSet;
-import java.util.List;
-import java.util.UUID;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import io.kryptoworx.signalcli.storage.CompareIdentityKeyStore;
+import io.kryptoworx.signalcli.storage.ComparePreKeyStore;
+import io.kryptoworx.signalcli.storage.CompareRecipientStore;
+import io.kryptoworx.signalcli.storage.CompareSenderKeyStore;
+import io.kryptoworx.signalcli.storage.CompareSessionStore;
+import io.kryptoworx.signalcli.storage.CompareSignedPreKeyStore;
+import io.kryptoworx.signalcli.storage.HsqlIdentityKeyStore;
+import io.kryptoworx.signalcli.storage.HsqlPreKeyStore;
+import io.kryptoworx.signalcli.storage.HsqlRecipientStore;
+import io.kryptoworx.signalcli.storage.HsqlSenderKeyStore;
+import io.kryptoworx.signalcli.storage.HsqlSessionStore;
+import io.kryptoworx.signalcli.storage.HsqlSignedPreKeyStore;
+import io.kryptoworx.signalcli.storage.SQLConnectionFactory;
 
 public class SignalAccount implements Closeable {
 
     private final static Logger logger = LoggerFactory.getLogger(SignalAccount.class);
 
+    private static final boolean DEBUG = true;
     private static final int MINIMUM_STORAGE_VERSION = 1;
     private static final int CURRENT_STORAGE_VERSION = 2;
 
@@ -93,14 +119,14 @@ public class SignalAccount implements Closeable {
     private boolean registered = false;
 
     private SignalProtocolStore signalProtocolStore;
-    private PreKeyStore preKeyStore;
-    private SignedPreKeyStore signedPreKeyStore;
-    private SessionStore sessionStore;
-    private IdentityKeyStore identityKeyStore;
-    private SenderKeyStore senderKeyStore;
+    private IPreKeyStore preKeyStore;
+    private ISignedPreKeyStore signedPreKeyStore;
+    private ISessionStore sessionStore;
+    private IIdentityKeyStore identityKeyStore;
+    private ISenderKeyStore senderKeyStore;
     private GroupStore groupStore;
     private GroupStore.Storage groupStoreStorage;
-    private RecipientStore recipientStore;
+    private IRecipientStore recipientStore;
     private StickerStore stickerStore;
     private StickerStore.Storage stickerStoreStorage;
 
@@ -174,30 +200,114 @@ public class SignalAccount implements Closeable {
             final int registrationId,
             final TrustNewIdentity trustNewIdentity
     ) throws IOException {
-        recipientStore = RecipientStore.load(getRecipientsStoreFile(dataPath, username), this::mergeRecipients);
-
-        preKeyStore = new PreKeyStore(getPreKeysPath(dataPath, username));
-        signedPreKeyStore = new SignedPreKeyStore(getSignedPreKeysPath(dataPath, username));
-        sessionStore = new SessionStore(getSessionsPath(dataPath, username), recipientStore);
-        identityKeyStore = new IdentityKeyStore(getIdentitiesPath(dataPath, username),
-                recipientStore,
-                identityKey,
-                registrationId,
-                trustNewIdentity);
-        senderKeyStore = new SenderKeyStore(getSharedSenderKeysFile(dataPath, username),
-                getSenderKeysPath(dataPath, username),
-                recipientStore::resolveRecipientAddress,
-                recipientStore);
+        File databaseFile = getDatabaseFile(dataPath, username);
+        IOUtils.createPrivateDirectories(databaseFile);
+        String databaseUrl = String.format("jdbc:hsqldb:file:%s", databaseFile);
+        try {
+            Class.forName("org.hsqldb.jdbc.JDBCDriver");
+//            Connection connection = DriverManager.getConnection(databaseUrl);
+            
+            JDBCPool jdbcPool = new JDBCPool(4);
+            jdbcPool.setURL(databaseUrl);
+            
+            SQLConnectionFactory connectionFactory = jdbcPool::getConnection;
+            
+            RecipientMergeHandler recipientMergeHandler = new RecipientMergeHandler() {
+                @Override
+                public void mergeRecipients(RecipientId recipientId, RecipientId toBeMergedRecipientId) {
+                    SignalAccount.this.mergeRecipients(recipientId, toBeMergedRecipientId);
+                }
+                
+                @Override
+                public void beforeMergeRecipients(Connection connection, long recipientId, long toBeMergedRecipientId) throws SQLException {
+                    sessionStore.mergeRecipients(connection, recipientId, toBeMergedRecipientId);
+                    senderKeyStore.mergeRecipients(connection, recipientId, toBeMergedRecipientId);
+                }
+            };
+            
+            recipientStore = createRecipientStore(dataPath, connectionFactory, recipientMergeHandler);
+            preKeyStore = createPreKeyStore(dataPath, connectionFactory);
+            signedPreKeyStore = createSignedPreKeyStore(dataPath, connectionFactory);
+            identityKeyStore = createIdentityKeyStore(dataPath, connectionFactory, 
+                    identityKey, registrationId, trustNewIdentity);
+            sessionStore = createSessionStore(dataPath, connectionFactory, recipientStore);
+            senderKeyStore = createSenderKeyStore(dataPath, connectionFactory, recipientStore);
+            
+        } catch (ClassNotFoundException e) {
+            throw new IOException("Failed to load database driver");
+        }
         signalProtocolStore = new SignalProtocolStore(preKeyStore,
                 signedPreKeyStore,
                 sessionStore,
                 identityKeyStore,
                 senderKeyStore,
                 this::isMultiDevice);
-
         messageCache = new MessageCache(getMessageCachePath(dataPath, username));
     }
 
+    private IRecipientStore createRecipientStore(File dataPath, 
+            SQLConnectionFactory connectionFactory, 
+            RecipientMergeHandler recipientMergeHandler) throws IOException {
+        HsqlRecipientStore dbStore = new HsqlRecipientStore(connectionFactory, recipientMergeHandler);
+        if (!DEBUG) return dbStore;
+        RecipientStore fileStore = RecipientStore.load(getRecipientsStoreFile(dataPath, username), recipientMergeHandler);
+        return new CompareRecipientStore(fileStore, dbStore);
+    }
+    
+    private IPreKeyStore createPreKeyStore(File dataPath, SQLConnectionFactory connectionFactory) throws IOException {
+        HsqlPreKeyStore dbStore = new HsqlPreKeyStore(connectionFactory);
+        if (!DEBUG) return dbStore;
+        PreKeyStore fileStore = new PreKeyStore(getPreKeysPath(dataPath, username));
+        return new ComparePreKeyStore(fileStore, dbStore);
+    }
+
+    private ISignedPreKeyStore createSignedPreKeyStore(File dataPath, SQLConnectionFactory connectionFactory) throws IOException {
+        HsqlSignedPreKeyStore dbStore = new HsqlSignedPreKeyStore(connectionFactory);
+        if (!DEBUG) return dbStore;
+        SignedPreKeyStore fileStore = new SignedPreKeyStore(getSignedPreKeysPath(dataPath, username));
+        return new CompareSignedPreKeyStore(fileStore, dbStore);
+    }
+    
+    private IIdentityKeyStore createIdentityKeyStore(File dataPath, 
+            SQLConnectionFactory connectionFactory,
+            IdentityKeyPair identityKey,
+            int registrationId,
+            TrustNewIdentity trustNewIdentity) throws IOException {
+        HsqlIdentityKeyStore dbStore = new HsqlIdentityKeyStore(connectionFactory,
+                recipientStore,
+                identityKey,
+                registrationId,
+                trustNewIdentity);
+        if (!DEBUG) return dbStore;
+        IdentityKeyStore fileStore = new IdentityKeyStore(getIdentitiesPath(dataPath, username),
+                recipientStore,
+                identityKey,
+                registrationId,
+                trustNewIdentity);
+        return new CompareIdentityKeyStore(fileStore, dbStore);
+    }
+    
+    private ISessionStore createSessionStore(File dataPath, 
+            SQLConnectionFactory connectionFactory, 
+            RecipientResolver recipientResolver) throws IOException {
+        HsqlSessionStore dbStore = new HsqlSessionStore(connectionFactory, recipientResolver);
+        if (!DEBUG) return dbStore;
+        SessionStore fileStore = new SessionStore(getSessionsPath(dataPath, username), recipientResolver);
+        return new CompareSessionStore(fileStore, dbStore);
+    }
+    
+    private ISenderKeyStore createSenderKeyStore(File dataPath,
+            SQLConnectionFactory connectionFactory,
+            IRecipientStore recipientStore) throws IOException {
+        HsqlSenderKeyStore dbStore = new HsqlSenderKeyStore(connectionFactory, recipientStore);
+        if (!DEBUG) return dbStore;
+        SenderKeyStore fileStore = new SenderKeyStore(getSharedSenderKeysFile(dataPath, username),
+                getSenderKeysPath(dataPath, username),
+                recipientStore::resolveRecipientAddress,
+                recipientStore);
+        return new CompareSenderKeyStore(fileStore, dbStore);
+    }
+    
     public static SignalAccount createOrUpdateLinkedAccount(
             File dataPath,
             String username,
@@ -366,6 +476,10 @@ public class SignalAccount implements Closeable {
 
     private static File getRecipientsStoreFile(File dataPath, String username) {
         return new File(getUserPath(dataPath, username), "recipients-store");
+    }
+
+    private static File getDatabaseFile(File dataPath, String username) {
+        return new File(getUserPath(dataPath, username), "db");
     }
 
     public static boolean userExists(File dataPath, String username) {
@@ -765,11 +879,11 @@ public class SignalAccount implements Closeable {
         return signalProtocolStore;
     }
 
-    public SessionStore getSessionStore() {
+    public ISessionStore getSessionStore() {
         return sessionStore;
     }
 
-    public IdentityKeyStore getIdentityKeyStore() {
+    public IIdentityKeyStore getIdentityKeyStore() {
         return identityKeyStore;
     }
 
@@ -781,7 +895,7 @@ public class SignalAccount implements Closeable {
         return recipientStore;
     }
 
-    public RecipientStore getRecipientStore() {
+    public IRecipientStore getRecipientStore() {
         return recipientStore;
     }
 
@@ -793,7 +907,7 @@ public class SignalAccount implements Closeable {
         return stickerStore;
     }
 
-    public SenderKeyStore getSenderKeyStore() {
+    public ISenderKeyStore getSenderKeyStore() {
         return senderKeyStore;
     }
 

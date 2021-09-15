@@ -29,7 +29,7 @@ import java.util.Map;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-public class IdentityKeyStore implements org.whispersystems.libsignal.state.IdentityKeyStore {
+public class IdentityKeyStore implements IIdentityKeyStore {
 
     private final static Logger logger = LoggerFactory.getLogger(IdentityKeyStore.class);
     private final ObjectMapper objectMapper = org.asamk.signal.manager.storage.Utils.createStorageObjectMapper();
@@ -74,6 +74,7 @@ public class IdentityKeyStore implements org.whispersystems.libsignal.state.Iden
         return saveIdentity(recipientId, identityKey, new Date());
     }
 
+    @Override
     public boolean saveIdentity(final RecipientId recipientId, final IdentityKey identityKey, Date added) {
         synchronized (cachedIdentities) {
             final var identityInfo = loadIdentityLocked(recipientId);
@@ -92,6 +93,7 @@ public class IdentityKeyStore implements org.whispersystems.libsignal.state.Iden
         }
     }
 
+    @Override
     public boolean setIdentityTrustLevel(
             RecipientId recipientId, IdentityKey identityKey, TrustLevel trustLevel
     ) {
@@ -146,6 +148,7 @@ public class IdentityKeyStore implements org.whispersystems.libsignal.state.Iden
         }
     }
 
+    @Override
     public IdentityInfo getIdentity(RecipientId recipientId) {
         synchronized (cachedIdentities) {
             return loadIdentityLocked(recipientId);
@@ -154,6 +157,7 @@ public class IdentityKeyStore implements org.whispersystems.libsignal.state.Iden
 
     final Pattern identityFileNamePattern = Pattern.compile("([0-9]+)");
 
+    @Override
     public List<IdentityInfo> getIdentities() {
         final var files = identitiesPath.listFiles();
         if (files == null) {
@@ -166,6 +170,7 @@ public class IdentityKeyStore implements org.whispersystems.libsignal.state.Iden
                 .collect(Collectors.toList());
     }
 
+    @Override
     public void mergeRecipients(final RecipientId recipientId, final RecipientId toBeMergedRecipientId) {
         synchronized (cachedIdentities) {
             deleteIdentityLocked(toBeMergedRecipientId);

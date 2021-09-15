@@ -16,7 +16,7 @@ import java.util.List;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-public class SignedPreKeyStore implements org.whispersystems.libsignal.state.SignedPreKeyStore {
+public class SignedPreKeyStore implements org.whispersystems.libsignal.state.SignedPreKeyStore, ISignedPreKeyStore {
 
     private final static Logger logger = LoggerFactory.getLogger(SignedPreKeyStore.class);
 

@@ -9,7 +9,6 @@ import org.whispersystems.libsignal.NoSessionException;
 import org.whispersystems.libsignal.SignalProtocolAddress;
 import org.whispersystems.libsignal.protocol.CiphertextMessage;
 import org.whispersystems.libsignal.state.SessionRecord;
-import org.whispersystems.signalservice.api.SignalServiceSessionStore;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -27,7 +26,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-public class SessionStore implements SignalServiceSessionStore {
+public class SessionStore implements ISessionStore {
 
     private final static Logger logger = LoggerFactory.getLogger(SessionStore.class);
 
@@ -128,6 +127,7 @@ public class SessionStore implements SignalServiceSessionStore {
         deleteAllSessions(recipientId);
     }
 
+    @Override
     public void deleteAllSessions(RecipientId recipientId) {
         synchronized (cachedSessions) {
             final var keys = getKeysLocked(recipientId);
@@ -160,6 +160,7 @@ public class SessionStore implements SignalServiceSessionStore {
         }
     }
 
+    @Override
     public void archiveAllSessions() {
         synchronized (cachedSessions) {
             final var keys = getKeysLocked();
@@ -169,6 +170,7 @@ public class SessionStore implements SignalServiceSessionStore {
         }
     }
 
+    @Override
     public void archiveSessions(final RecipientId recipientId) {
         synchronized (cachedSessions) {
             getKeysLocked().stream()
@@ -177,6 +179,7 @@ public class SessionStore implements SignalServiceSessionStore {
         }
     }
 
+    @Override
     public void mergeRecipients(RecipientId recipientId, RecipientId toBeMergedRecipientId) {
         synchronized (cachedSessions) {
             final var keys = getKeysLocked(toBeMergedRecipientId);

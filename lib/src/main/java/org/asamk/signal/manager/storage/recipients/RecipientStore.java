@@ -34,7 +34,7 @@ import java.util.UUID;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-public class RecipientStore implements RecipientResolver, ContactsStore, ProfileStore {
+public class RecipientStore implements RecipientResolver, ContactsStore, ProfileStore, IRecipientStore {
 
     private final static Logger logger = LoggerFactory.getLogger(RecipientStore.class);
 
@@ -584,10 +584,5 @@ public class RecipientStore implements RecipientResolver, ContactsStore, Profile
                 }
             }
         }
-    }
-
-    public interface RecipientMergeHandler {
-
-        void mergeRecipients(RecipientId recipientId, RecipientId toBeMergedRecipientId);
     }
 }
