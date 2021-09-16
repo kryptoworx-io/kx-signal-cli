@@ -70,20 +70,11 @@
 		            <configuration>
 		              <sources>
 		                <source>lib/src</source>
-		                
 		              </sources>
 		            </configuration>
 		          </execution>
 		        </executions>
 		      </plugin>
-		      <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-surefire-plugin</artifactId>
-                <configuration>
-                    <argLine>-Djava.library.path=D:/Development/programming/kx/kx-signal-native-fragments/libsignal-clientWin32Fragment/native</argLine>
-                </configuration>
-				</plugin>
-             
 		</plugins>
 	</build>
 </project>
