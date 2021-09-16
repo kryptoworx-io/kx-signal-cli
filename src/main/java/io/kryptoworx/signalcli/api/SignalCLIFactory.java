@@ -1,6 +1,6 @@
 package io.kryptoworx.signalcli.api;
 
-import io.kryptoworx.signalcli.impl.SignalCLIImpl;
+import org.asamk.signal.SignalCLIImpl;
 
 public class SignalCLIFactory {
 	
