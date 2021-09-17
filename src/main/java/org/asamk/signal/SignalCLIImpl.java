@@ -28,6 +28,7 @@ import org.asamk.signal.manager.config.ServiceEnvironment;
 import org.asamk.signal.manager.groups.GroupNotFoundException;
 import org.asamk.signal.manager.groups.GroupSendingNotAllowedException;
 import org.asamk.signal.manager.groups.NotAGroupMemberException;
+import org.asamk.signal.manager.storage.SignalAccount;
 import org.asamk.signal.manager.storage.identities.TrustNewIdentity;
 import org.asamk.signal.util.CommandUtil;
 import org.asamk.signal.util.ErrorUtils;
@@ -54,9 +55,6 @@ public class SignalCLIImpl implements SignalCLI {
 
 			var usernames = Manager.getAllLocalUsernames(getDefaultDataPath());
 			userName = usernames.get(0);
-
-			
-			
 
 		} catch (Exception e) {
 			// TODO Auto-generated catch block
@@ -92,7 +90,7 @@ public class SignalCLIImpl implements SignalCLI {
 	@Override
 	public void register(final String phoneNumber) {
 		System.out.println("in register for number: " + phoneNumber);
-		
+
 		try {
 			registrationManager = RegistrationManager.initInternal(userName);
 			registrationManager.register(false, null);
@@ -105,70 +103,79 @@ public class SignalCLIImpl implements SignalCLI {
 
 	@Override
 	public void send(final String message, final String targetNumber, final String attachmentFileName) {
-		
+
 		try {
-		System.out.println("in sending message: ");
-		
-		generalManager = loadManager(userName, getDefaultDataPath(), ServiceEnvironment.LIVE,
-				TrustNewIdentity.ON_FIRST_USE);
-		var m = generalManager;
+			System.out.println("in sending message: ");
 
-		final var recipientStrings = Collections.singletonList(targetNumber);
+			generalManager = loadManager(userName, getDefaultDataPath(), ServiceEnvironment.LIVE,
+					TrustNewIdentity.ON_FIRST_USE);
+			var m = generalManager;
 
-		final Set<RecipientIdentifier> recipientIdentifiers = CommandUtil.getRecipientIdentifiers(m, false, recipientStrings,
-				Collections.EMPTY_LIST);
+			final var recipientStrings = Collections.singletonList(targetNumber);
 
-		final var isEndSession = false;
-		if (isEndSession) {
-			final Set singleRecipients = recipientIdentifiers.stream()
-					.filter(r -> r instanceof RecipientIdentifier.Single).map(RecipientIdentifier.Single.class::cast)
-					.collect(Collectors.toSet());
-			if (( singleRecipients).isEmpty()) {
-				throw new UserErrorException("No recipients given");
+			final Set<RecipientIdentifier> recipientIdentifiers = CommandUtil.getRecipientIdentifiers(m, false,
+					recipientStrings, Collections.EMPTY_LIST);
+
+			final var isEndSession = false;
+			if (isEndSession) {
+				final Set singleRecipients = recipientIdentifiers.stream()
+						.filter(r -> r instanceof RecipientIdentifier.Single)
+						.map(RecipientIdentifier.Single.class::cast).collect(Collectors.toSet());
+				if ((singleRecipients).isEmpty()) {
+					throw new UserErrorException("No recipients given");
+				}
+
+				try {
+					m.sendEndSessionMessage(singleRecipients);
+					m.close();
+					return;
+				} catch (IOException e) {
+					throw new UnexpectedErrorException(
+							"Failed to send message: " + e.getMessage() + " (" + e.getClass().getSimpleName() + ")", e);
+				}
 			}
 
+			var messageText = message;
+			if (messageText == null) {
+				try {
+					messageText = IOUtils.readAll(System.in, Charset.defaultCharset());
+				} catch (IOException e) {
+					throw new UserErrorException("Failed to read message from stdin: " + e.getMessage());
+				}
+			}
+
+			List<String> attachments = attachmentFileName == null ? Collections.emptyList()
+					: Collections.singletonList(attachmentFileName);
+			if (attachments == null) {
+				attachments = List.of();
+			}
+
+			var outputWriter = new PlainTextWriterImpl(System.out);
+
 			try {
-				m.sendEndSessionMessage(singleRecipients);
+				var results = m.sendMessage(new Message(messageText, attachments), recipientIdentifiers);
+				outputResult(outputWriter, results.getTimestamp());
 				m.close();
-				return;
-			} catch (IOException e) {
+				ErrorUtils.handleSendMessageResults(results.getResults());
+			} catch (AttachmentInvalidException | IOException e) {
 				throw new UnexpectedErrorException(
 						"Failed to send message: " + e.getMessage() + " (" + e.getClass().getSimpleName() + ")", e);
+			} catch (GroupNotFoundException | NotAGroupMemberException | GroupSendingNotAllowedException e) {
+				throw new UserErrorException(e.getMessage());
 			}
-		}
-
-		var messageText = message;
-		if (messageText == null) {
-			try {
-				messageText = IOUtils.readAll(System.in, Charset.defaultCharset());
-			} catch (IOException e) {
-				throw new UserErrorException("Failed to read message from stdin: " + e.getMessage());
+		} catch(Exception ex) {
+			
+			if (generalManager != null) {
+				try {
+					generalManager.close();
+				} catch(IOException ioex) {
+					
+				}
 			}
+			throw new RuntimeException(ex.getMessage());
+			
 		}
 
-		List<String> attachments = attachmentFileName == null ? Collections.emptyList() : Collections.singletonList(attachmentFileName);
-		if (attachments == null) {
-			attachments = List.of();
-		}
-
-		var outputWriter = new PlainTextWriterImpl(System.out);
-		
-		try {
-			var results = m.sendMessage(new Message(messageText, attachments), recipientIdentifiers);
-			outputResult(outputWriter, results.getTimestamp());
-			m.close();
-			ErrorUtils.handleSendMessageResults(results.getResults());
-		} catch (AttachmentInvalidException | IOException e) {
-			throw new UnexpectedErrorException(
-					"Failed to send message: " + e.getMessage() + " (" + e.getClass().getSimpleName() + ")", e);
-		} catch (GroupNotFoundException | NotAGroupMemberException | GroupSendingNotAllowedException e) {
-			throw new UserErrorException(e.getMessage());
-		}
-		}
-		catch(Exception ex) {
-			ex.printStackTrace(); 
-		}
-		
 	}
 
 	@Override
@@ -193,15 +200,34 @@ public class SignalCLIImpl implements SignalCLI {
 			e.printStackTrace();
 		}
 	}
-	
-	 private void outputResult(final OutputWriter outputWriter, final long timestamp) {
-	        if (outputWriter instanceof PlainTextWriter) {
-	            final var writer = (PlainTextWriter) outputWriter;
-	            writer.println("{}", timestamp);
-	        } else {
-	            final var writer = (JsonWriter) outputWriter;
-	            writer.write(Map.of("timestamp", timestamp));
-	        }
-	    }
+
+	private void outputResult(final OutputWriter outputWriter, final long timestamp) {
+		if (outputWriter instanceof PlainTextWriter) {
+			final var writer = (PlainTextWriter) outputWriter;
+			writer.println("{}", timestamp);
+		} else {
+			final var writer = (JsonWriter) outputWriter;
+			writer.write(Map.of("timestamp", timestamp));
+		}
+	}
+
+	@Override
+	public List<String> getRegisteredPhoneNumbers() {
+		var registeredUsers = new ArrayList<String>();
+		var usernames = Manager.getAllLocalUsernames(getDefaultDataPath());
+		if (usernames != null) {
+			usernames.forEach(u -> {
+				if (SignalAccount.userExists(getDefaultDataPath(), u)) {
+					registeredUsers.add(u);
+				}
+			});
+			
+			return registeredUsers;
+			
+		} else {
+			return Collections.emptyList();
+		}
+		
+	}
 
 }
