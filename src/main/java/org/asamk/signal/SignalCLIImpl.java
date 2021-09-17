@@ -217,7 +217,7 @@ public class SignalCLIImpl implements SignalCLI {
 		var usernames = Manager.getAllLocalUsernames(getDefaultDataPath());
 		if (usernames != null) {
 			usernames.forEach(u -> {
-				if (SignalAccount.userExists(getDefaultDataPath(), u)) {
+				if (SignalAccount.userExists(PathConfig.createDefault(getDefaultDataPath()).getDataPath(), u)) {
 					registeredUsers.add(u);
 				}
 			});
