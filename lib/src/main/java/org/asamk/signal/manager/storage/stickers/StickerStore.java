@@ -8,7 +8,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
-public class StickerStore {
+public class StickerStore implements IStickerStore {
 
     private final Map<StickerPackId, Sticker> stickers;
 
@@ -24,7 +24,7 @@ public class StickerStore {
         this.saver = saver;
     }
 
-    public static StickerStore fromStorage(Storage storage, Saver saver) {
+    public static IStickerStore fromStorage(Storage storage, Saver saver) {
         final var packIds = new HashSet<StickerPackId>();
         final var stickers = storage.stickers.stream().map(s -> {
             var packId = StickerPackId.deserialize(Base64.getDecoder().decode(s.packId));

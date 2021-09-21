@@ -92,6 +92,8 @@ import org.whispersystems.signalservice.internal.util.DynamicCredentialsProvider
 import org.whispersystems.signalservice.internal.util.Hex;
 import org.whispersystems.signalservice.internal.util.Util;
 
+import io.kryptoworx.signalcli.storage.HsqlAccountStore;
+
 import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
@@ -263,14 +265,10 @@ public class Manager implements Closeable {
             final TrustNewIdentity trustNewIdentity
     ) throws IOException, NotRegisteredException {
         var pathConfig = PathConfig.createDefault(settingsPath);
+        HsqlAccountStore accountStore = SignalAccount.createAccountStore(pathConfig.getDataPath());
+        var account = SignalAccount.load(accountStore, pathConfig.getDataPath(), username, true, trustNewIdentity);
 
-        if (!SignalAccount.userExists(pathConfig.getDataPath(), username)) {
-            throw new NotRegisteredException();
-        }
-
-        var account = SignalAccount.load(pathConfig.getDataPath(), username, true, trustNewIdentity);
-
-        if (!account.isRegistered()) {
+        if (account == null || !account.isRegistered()) {
             throw new NotRegisteredException();
         }
 

@@ -22,7 +22,6 @@ import org.whispersystems.libsignal.SignalProtocolAddress;
 
 public class HsqlIdentityKeyStore extends HsqlStore implements IIdentityKeyStore {
 
-    private final Object cachedIdentities = new Object();
     private final RecipientResolver resolver;
     private final IdentityKeyPair identityKeyPair;
     private final int localRegistrationId;
@@ -74,10 +73,9 @@ public class HsqlIdentityKeyStore extends HsqlStore implements IIdentityKeyStore
         return saveIdentity(recipientId, identityKey, new Date());
     }
 
-    public boolean saveIdentity(final RecipientId recipientId, final IdentityKey identityKey, Date added) {
-        synchronized (cachedIdentities) {
-            return transaction(c -> dbUpdateIdentity(c, recipientId.getId(), identityKey, added));
-        }
+    @Override
+    public boolean saveIdentity(RecipientId recipientId, IdentityKey identityKey, Date added) {
+        return transaction(c -> dbUpdateIdentity(c, recipientId.getId(), identityKey, added));
     }
     
     private boolean dbUpdateIdentity(Connection connection, long recipientId, IdentityKey identityKey, Date dateAdded) throws SQLException {
@@ -114,10 +112,9 @@ public class HsqlIdentityKeyStore extends HsqlStore implements IIdentityKeyStore
         }
     }
 
+    @Override
     public boolean setIdentityTrustLevel(RecipientId recipientId, IdentityKey identityKey, TrustLevel trustLevel) {
-        synchronized (cachedIdentities) {
-            return transaction(c -> dbUpdateTrustLevel(c, recipientId.getId(), identityKey, trustLevel));
-        }
+        return transaction(c -> dbUpdateTrustLevel(c, recipientId.getId(), identityKey, trustLevel));
     }
     
     private boolean dbUpdateTrustLevel(Connection connection, long recipientId, IdentityKey identityKey, TrustLevel trustLevel) throws SQLException {
@@ -138,22 +135,19 @@ public class HsqlIdentityKeyStore extends HsqlStore implements IIdentityKeyStore
         if (trustNewIdentity == TrustNewIdentity.ALWAYS) {
             return true;
         }
-        
-        var recipientId = resolveRecipient(address.getName());
-        synchronized (cachedIdentities) {
-            IdentityInfo identityInfo = transaction(c -> dbLoadIdentity(c, recipientId.getId()));
-            if (identityInfo == null) {
-                // Identity not found
-                return trustNewIdentity == TrustNewIdentity.ON_FIRST_USE;
-            }
-
-            // TODO implement possibility for different handling of incoming/outgoing trust decisions
-            if (!Objects.equals(identityInfo.getIdentityKey(), identityKey)) {
-                // Identity found, but different
-                return false;
-            }
-            return identityInfo.isTrusted();
+        RecipientId recipientId = resolveRecipient(address.getName());
+        IdentityInfo identityInfo = transaction(c -> dbLoadIdentity(c, recipientId.getId()));
+        if (identityInfo == null) {
+            // Identity not found
+            return trustNewIdentity == TrustNewIdentity.ON_FIRST_USE;
         }
+
+        // TODO implement possibility for different handling of incoming/outgoing trust decisions
+        if (!Objects.equals(identityInfo.getIdentityKey(), identityKey)) {
+            // Identity found, but different
+            return false;
+        }
+        return identityInfo.isTrusted();
     }
     
     @Override
@@ -163,12 +157,12 @@ public class HsqlIdentityKeyStore extends HsqlStore implements IIdentityKeyStore
         return identity == null ? null : identity.getIdentityKey();
     }
 
+    @Override
     public IdentityInfo getIdentity(RecipientId recipientId) {
-        synchronized (cachedIdentities) {
-            return transaction(c -> dbLoadIdentity(c, recipientId.getId()));
-        }
+        return transaction(c -> dbLoadIdentity(c, recipientId.getId()));
     }
 
+    @Override
     public List<IdentityInfo> getIdentities() {
         return transaction(c -> dbLoadIdentities(c));
     }

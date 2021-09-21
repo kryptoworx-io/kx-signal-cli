@@ -18,4 +18,6 @@ public interface ISignedPreKeyStore {
 
     void removeAllSignedPreKeys();
 
+    int getNextSignedPreKeyId();
+
 }

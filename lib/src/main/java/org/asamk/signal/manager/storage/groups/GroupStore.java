@@ -37,7 +37,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-public class GroupStore {
+public class GroupStore implements IGroupStore {
 
     private final static Logger logger = LoggerFactory.getLogger(GroupStore.class);
 

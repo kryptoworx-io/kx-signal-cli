@@ -32,6 +32,13 @@ public class SQLInsert {
         return this;
     }
 
+    public <T> SQLInsert addIfNotNull(String column, T value, SQLParameterSetter<T> parameterSetter) {
+        if (value != null) {
+            return add(column, value, parameterSetter);
+        }
+        return this;
+    }
+
     public void execute(Connection connection) throws SQLException {
         execute(connection, null);
     }

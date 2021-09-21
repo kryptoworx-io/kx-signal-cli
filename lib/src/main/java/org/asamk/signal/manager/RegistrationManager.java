@@ -55,6 +55,7 @@ import io.kryptoworx.gcm.GcmClient;
 import io.kryptoworx.gcm.GcmMessageListener;
 import io.kryptoworx.gcm.http.HttpException;
 import io.kryptoworx.gcm.http.OkHttpTransport;
+import io.kryptoworx.signalcli.storage.HsqlAccountStore;
 import okhttp3.OkHttpClient;
 
 public class RegistrationManager implements Closeable {
@@ -147,18 +148,17 @@ public class RegistrationManager implements Closeable {
         this.pinHelper = new PinHelper(keyBackupService);
     }
     
-    public static RegistrationManager initInternal(String username)
-    					throws Exception{
+    public static RegistrationManager initInternal(String username) throws Exception{
     	String userAgent = "Signal-Android/5.22.3 signal-cli";
     	var pathConfig = PathConfig.createDefault(getDefaultDataPath());
         final var serviceConfiguration = ServiceConfig.getServiceEnvironmentConfig(ServiceEnvironment.LIVE, userAgent);
-        
-        if (!SignalAccount.userExists(pathConfig.getDataPath(), username)) {
+        HsqlAccountStore accountStore = SignalAccount.createAccountStore(pathConfig.getDataPath());
+        if (username != null && !accountStore.userExists(username)) {
             var identityKey = KeyUtils.generateIdentityKeyPair();
             var registrationId = KeyHelper.generateRegistrationId(false);
-
             var profileKey = KeyUtils.createProfileKey();
             var account = SignalAccount.create(pathConfig.getDataPath(),
+                    accountStore,
                     username,
                     identityKey,
                     registrationId,
@@ -168,8 +168,7 @@ public class RegistrationManager implements Closeable {
             return new RegistrationManager(account,  pathConfig, serviceConfiguration, userAgent);
         }
 
-        var account = SignalAccount.load(pathConfig.getDataPath(), username, true, TrustNewIdentity.ON_FIRST_USE);
-
+        var account = SignalAccount.load(accountStore, pathConfig.getDataPath(), username, true, TrustNewIdentity.ON_FIRST_USE);
         return new RegistrationManager(account, pathConfig, serviceConfiguration, userAgent);
     }
     
@@ -186,12 +185,14 @@ public class RegistrationManager implements Closeable {
         var pathConfig = PathConfig.createDefault(settingsPath);
 
         final var serviceConfiguration = ServiceConfig.getServiceEnvironmentConfig(serviceEnvironment, userAgent);
-        if (!SignalAccount.userExists(pathConfig.getDataPath(), username)) {
+        HsqlAccountStore accountStore = SignalAccount.createAccountStore(pathConfig.getDataPath());
+        if (username == null || !accountStore.userExists(username)) {
             var identityKey = KeyUtils.generateIdentityKeyPair();
             var registrationId = KeyHelper.generateRegistrationId(false);
 
             var profileKey = KeyUtils.createProfileKey();
             var account = SignalAccount.create(pathConfig.getDataPath(),
+                    accountStore, 
                     username,
                     identityKey,
                     registrationId,
@@ -201,8 +202,7 @@ public class RegistrationManager implements Closeable {
             return new RegistrationManager(account, pathConfig, serviceConfiguration, userAgent);
         }
 
-        var account = SignalAccount.load(pathConfig.getDataPath(), username, true, TrustNewIdentity.ON_FIRST_USE);
-
+        var account = SignalAccount.load(accountStore, pathConfig.getDataPath(), username, true, TrustNewIdentity.ON_FIRST_USE);
         return new RegistrationManager(account, pathConfig, serviceConfiguration, userAgent);
     }
 

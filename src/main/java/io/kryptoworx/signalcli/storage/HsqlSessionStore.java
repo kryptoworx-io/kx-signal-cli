@@ -10,7 +10,6 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -49,7 +48,7 @@ public class HsqlSessionStore extends HsqlStore implements ISessionStore {
                         REFERENCES recipient(id)
                         ON DELETE CASCADE,
                     device INT NOT NULL,
-                    data VARBINARY(1024) NOT NULL,
+                    data VARBINARY(4096) NOT NULL,
                     PRIMARY KEY (recipient, device)
                 )
                 """;
@@ -153,9 +152,8 @@ public class HsqlSessionStore extends HsqlStore implements ISessionStore {
     @Override
     public void archiveSession(final SignalProtocolAddress address) {
         final var key = getKey(address);
-
         synchronized (cachedSessions) {
-            archiveSessionLocked(key);
+            voidTransaction(c -> dbArchiveSessions(c, key.getRecipientId().getId(), key.getDeviceId()));
         }
     }
 
@@ -175,18 +173,13 @@ public class HsqlSessionStore extends HsqlStore implements ISessionStore {
 
     public void archiveAllSessions() {
         synchronized (cachedSessions) {
-            final var keys = getKeysLocked();
-            for (var key : keys) {
-                archiveSessionLocked(key);
-            }
+            voidTransaction(c -> dbArchiveSessions(c, null, null));
         }
     }
 
     public void archiveSessions(final RecipientId recipientId) {
         synchronized (cachedSessions) {
-            getKeysLocked().stream()
-                    .filter(key -> key.recipientId.equals(recipientId))
-                    .forEach(this::archiveSessionLocked);
+            voidTransaction(c -> dbArchiveSessions(c, recipientId.getId(), null));
         }
     }
 
@@ -260,22 +253,6 @@ public class HsqlSessionStore extends HsqlStore implements ISessionStore {
         return keys;
     }
     
-    private Collection<Key> getKeysLocked() {
-        return transaction(c -> dbLoadKeys(c));
-    }
-
-    private List<Key> dbLoadKeys(Connection connection) throws SQLException {
-        String sqlQueryKeys = "SELECT recipient, device FROM session";
-        List<Key> keys = new ArrayList<>();
-        try (PreparedStatement stmt = connection.prepareStatement(sqlQueryKeys);
-                ResultSet rs = stmt.executeQuery()) {
-            while (rs.next()) {
-                keys.add(new Key(RecipientId.of(rs.getLong(1)), rs.getInt(2)));
-            }
-        }
-        return keys;
-    }
-
     private SessionRecord loadSessionLocked(final Key key) {
         var session = cachedSessions.get(key);
         if (session != null) {
@@ -323,7 +300,7 @@ public class HsqlSessionStore extends HsqlStore implements ISessionStore {
         String sqlMerge = """
                 MERGE INTO session t 
                 USING (VALUES ?, ?) AS s(recipient, device) 
-                ON t.recipient = s.recipient AND t.device = s.device
+                ON (t.recipient = s.recipient AND t.device = s.device)
                 WHEN MATCHED THEN UPDATE SET t.data = ?
                 WHEN NOT MATCHED THEN INSERT (recipient, device, data) 
                     VALUES (s.recipient, s.device, ?) 
@@ -339,27 +316,37 @@ public class HsqlSessionStore extends HsqlStore implements ISessionStore {
         }
     }
 
-    private void archiveSessionLocked(final Key key) {
-        SessionRecord newSession = transaction(c -> dbArchiveSession(c, key));
-        cachedSessions.put(key, newSession);
-    }
-    
-    private SessionRecord dbArchiveSession(Connection connection, Key key) throws SQLException {
-        String sqlQuery = "SELECT data FROM recipient WHERE recipient = ? AND device = ? FOR UPDATE";
-        try (PreparedStatement stmt = connection.prepareStatement(sqlQuery, TYPE_FORWARD_ONLY, CONCUR_UPDATABLE)) {
-            stmt.setLong(1, key.getRecipientId().getId());
-            stmt.setInt(2, key.getDeviceId());
+    private void dbArchiveSessions(Connection connection, Long recipientId, Integer deviceId) throws SQLException {
+        StringBuilder sqlQueryBuilder = new StringBuilder("SELECT recipient, device, data FROM session");
+        if (recipientId != null) {
+            sqlQueryBuilder.append(" WHERE recipient = ?");
+        }
+        if (deviceId != null) {
+            sqlQueryBuilder.append(" AND device = ?");
+        }
+        sqlQueryBuilder.append(" FOR UPDATE");
+        try (PreparedStatement stmt = connection.prepareStatement(sqlQueryBuilder.toString(), TYPE_FORWARD_ONLY, CONCUR_UPDATABLE)) {
+            int p = 1;
+            if (recipientId != null) {
+                stmt.setLong(p++, recipientId);
+            }
+            if (deviceId != null) {
+                stmt.setInt(p++, deviceId);
+            }
             try (ResultSet rs = stmt.executeQuery()) {
                 if (rs.next()) {
-                    SessionRecord s = sessionRecord(rs.getBytes(1), false);
+                    int c = 1;
+                    long r = rs.getLong(c++);
+                    int d = rs.getInt(c++);
+                    Key k = new Key(RecipientId.of(r), d);
+                    SessionRecord s = sessionRecord(rs.getBytes(c++), false);
                     if (s != null) {
                         s.archiveCurrentState();
-                        rs.updateBytes(1, s.serialize());
+                        rs.updateBytes(3, s.serialize());
                         rs.updateRow();
+                        cachedSessions.put(k, s);
                     }
-                    return s;
                 }
-                return null;
             }
         }
     }

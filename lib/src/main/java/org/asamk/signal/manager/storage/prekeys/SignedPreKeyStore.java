@@ -10,6 +10,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.channels.UnsupportedAddressTypeException;
 import java.nio.file.Files;
 import java.util.Arrays;
 import java.util.List;
@@ -122,5 +123,10 @@ public class SignedPreKeyStore implements org.whispersystems.libsignal.state.Sig
             logger.error("Failed to load signed pre key: {}", e.getMessage());
             throw new AssertionError(e);
         }
+    }
+
+    @Override
+    public int getNextSignedPreKeyId() {
+        throw new UnsupportedOperationException();
     }
 }

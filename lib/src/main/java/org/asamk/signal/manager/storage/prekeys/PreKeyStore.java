@@ -101,4 +101,9 @@ public class PreKeyStore implements org.whispersystems.libsignal.state.PreKeySto
         }
         return new File(preKeysPath, String.valueOf(preKeyId));
     }
+
+    @Override
+    public int getPreKeyIdOffset() {
+        throw new UnsupportedOperationException();
+    }
 }

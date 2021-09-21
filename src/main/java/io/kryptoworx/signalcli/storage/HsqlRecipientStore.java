@@ -498,7 +498,7 @@ public class HsqlRecipientStore extends HsqlStore implements IRecipientStore {
                 if (rs.getBytes(p) == null && profileKeyBytes != null) {
                     rs.updateBytes(p, profileKeyBytes);
                 }
-                if (rs.getBytes(++p) == null) {
+                if (rs.getBytes(++p) == null && profileKeyCredBytes != null) {
                     rs.updateBytes(p, profileKeyCredBytes);
                 }
                 hasContact = rs.getBoolean(++p);

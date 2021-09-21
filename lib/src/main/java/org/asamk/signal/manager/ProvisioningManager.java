@@ -16,11 +16,14 @@
  */
 package org.asamk.signal.manager;
 
+import java.io.File;
+import java.io.IOException;
+import java.net.URI;
+import java.util.concurrent.TimeoutException;
+
 import org.asamk.signal.manager.config.ServiceConfig;
 import org.asamk.signal.manager.config.ServiceEnvironment;
 import org.asamk.signal.manager.config.ServiceEnvironmentConfig;
-import org.asamk.signal.manager.storage.SignalAccount;
-import org.asamk.signal.manager.storage.identities.TrustNewIdentity;
 import org.asamk.signal.manager.util.KeyUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,14 +33,7 @@ import org.whispersystems.signalservice.api.SignalServiceAccountManager;
 import org.whispersystems.signalservice.api.groupsv2.ClientZkOperations;
 import org.whispersystems.signalservice.api.groupsv2.GroupsV2Operations;
 import org.whispersystems.signalservice.api.push.SignalServiceAddress;
-import org.whispersystems.signalservice.api.push.exceptions.AuthorizationFailedException;
-import org.whispersystems.signalservice.api.util.DeviceNameUtil;
 import org.whispersystems.signalservice.internal.util.DynamicCredentialsProvider;
-
-import java.io.File;
-import java.io.IOException;
-import java.net.URI;
-import java.util.concurrent.TimeoutException;
 
 public class ProvisioningManager {
 
@@ -90,12 +86,15 @@ public class ProvisioningManager {
     }
 
     public Manager finishDeviceLink(String deviceName) throws IOException, TimeoutException, UserAlreadyExists {
+        throw new UnsupportedOperationException();
+        /*
         var ret = accountManager.getNewDeviceRegistration(tempIdentityKey);
         var number = ret.getNumber();
 
         logger.info("Received link information from {}, linking in progress ...", number);
 
-        if (SignalAccount.userExists(pathConfig.getDataPath(), number) && !canRelinkExistingAccount(number)) {
+        HsqlAccountStore accountStore = SignalAccount.createAccountStore(pathConfig.getDataPath());
+        if (accountStore.userExists(number) && !canRelinkExistingAccount(number)) {
             throw new UserAlreadyExists(number, SignalAccount.getFileName(pathConfig.getDataPath(), number));
         }
 
@@ -115,7 +114,8 @@ public class ProvisioningManager {
 
         SignalAccount account = null;
         try {
-            account = SignalAccount.createOrUpdateLinkedAccount(pathConfig.getDataPath(),
+            account = SignalAccount.createOrUpdateLinkedAccount(accountStore,
+                    pathConfig.getDataPath(),
                     number,
                     ret.getUuid(),
                     password,
@@ -161,12 +161,14 @@ public class ProvisioningManager {
                 account.close();
             }
         }
+        */
     }
 
+    /*
     private boolean canRelinkExistingAccount(final String number) throws IOException {
         final SignalAccount signalAccount;
         try {
-            signalAccount = SignalAccount.load(pathConfig.getDataPath(), number, false, TrustNewIdentity.ON_FIRST_USE);
+            signalAccount = SignalAccount.load(pathConfig.getDataPath(), number, TrustNewIdentity.ON_FIRST_USE);
         } catch (IOException e) {
             logger.debug("Account in use or failed to load.", e);
             return false;
@@ -189,4 +191,5 @@ public class ProvisioningManager {
             return false;
         }
     }
+    */
 }
