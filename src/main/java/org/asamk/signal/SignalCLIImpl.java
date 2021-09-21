@@ -279,10 +279,9 @@ public class SignalCLIImpl implements SignalCLI {
 	}
 
 	@Override
-	public void sendReceipt(String recipientNumber) {
+	public void sendReceipt(String recipientNumber, long messageTimestamp) {
 		final var recipientString = recipientNumber;
-		final var ts = new Date().getTime();
-		final var targetTimestamps = Collections.singletonList(1632219260474L);
+		final var targetTimestamps = Collections.singletonList(messageTimestamp);
 		final var type = "read";
 
 		try {

@@ -9,7 +9,7 @@ public interface SignalCLI {
     void verify(String code);
     List<String> getRegisteredPhoneNumbers();
     void send(String message, String targetNumber, String attachmentFileName);
-    void sendReceipt(String receiptNumber);
+    void sendReceipt(String receiptNumber, long messageTimestamp);
     void receive();
 
 }
