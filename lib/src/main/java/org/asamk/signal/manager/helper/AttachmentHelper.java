@@ -49,6 +49,7 @@ public class AttachmentHelper {
         for (var attachment : attachmentStreams) {
             if (attachment.isStream()) {
                 attachmentPointers.add(messageSender.uploadAttachment(attachment.asStream()));
+                attachment.asStream().getInputStream().close();
             } else if (attachment.isPointer()) {
                 attachmentPointers.add(attachment.asPointer());
             }
