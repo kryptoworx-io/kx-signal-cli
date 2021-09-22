@@ -26,6 +26,7 @@ import org.asamk.signal.manager.RegistrationManager;
 import org.asamk.signal.manager.UntrustedIdentityException;
 import org.asamk.signal.manager.api.Message;
 import org.asamk.signal.manager.api.RecipientIdentifier;
+import org.asamk.signal.manager.api.SendMessageResults;
 import org.asamk.signal.manager.config.ServiceConfig;
 import org.asamk.signal.manager.config.ServiceEnvironment;
 import org.asamk.signal.manager.groups.GroupNotFoundException;
@@ -41,6 +42,9 @@ import org.bouncycastle.asn1.x509.Time;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.whispersystems.signalservice.api.KeyBackupServicePinException;
 import org.whispersystems.signalservice.api.KeyBackupSystemNoDataException;
+import org.whispersystems.signalservice.api.messages.SignalServiceContent;
+import org.whispersystems.signalservice.api.messages.SignalServiceEnvelope;
+import org.whispersystems.signalservice.api.messages.SignalServiceReceiptMessage;
 import org.whispersystems.signalservice.internal.push.LockedException;
 
 import io.kryptoworx.signalcli.api.SignalCLI;
@@ -59,6 +63,9 @@ public class SignalCLIImpl implements SignalCLI {
 
 			var usernames = Manager.getAllLocalUsernames(getDefaultDataPath());
 			userName = usernames.get(0);
+			
+			generalManager = loadManager(userName, getDefaultDataPath(), ServiceEnvironment.LIVE,
+					TrustNewIdentity.ON_FIRST_USE);
 
 		} catch (Exception e) {
 			// TODO Auto-generated catch block
@@ -107,15 +114,16 @@ public class SignalCLIImpl implements SignalCLI {
 	}
 
 	@Override
-	public void send(final String message, final String targetNumber, final String attachmentFileName) {
+	public SendMessageResults send(final String message, final String targetNumber, final String attachmentFileName) {
 
 		try {
 			System.out.println("in sending message: ");
 
-			if (generalManager == null) {
-				generalManager = loadManager(userName, getDefaultDataPath(), ServiceEnvironment.LIVE,
-						TrustNewIdentity.ON_FIRST_USE);
-			}
+			
+//			generalManager = loadManager(userName, getDefaultDataPath(), ServiceEnvironment.LIVE,
+//							TrustNewIdentity.ON_FIRST_USE);
+			
+			
 			var m = generalManager;
 
 			final var recipientStrings = Collections.singletonList(targetNumber);
@@ -135,7 +143,7 @@ public class SignalCLIImpl implements SignalCLI {
 				try {
 					m.sendEndSessionMessage(singleRecipients);
 					m.close();
-					return;
+					return null;
 				} catch (IOException e) {
 					throw new UnexpectedErrorException(
 							"Failed to send message: " + e.getMessage() + " (" + e.getClass().getSimpleName() + ")", e);
@@ -162,8 +170,9 @@ public class SignalCLIImpl implements SignalCLI {
 			try {
 				var results = m.sendMessage(new Message(messageText, attachments), recipientIdentifiers);
 				outputResult(outputWriter, results.getTimestamp());
-				m.close();
+				//m.close();
 				ErrorUtils.handleSendMessageResults(results.getResults());
+				return results;
 			} catch (AttachmentInvalidException | IOException e) {
 				throw new UnexpectedErrorException(
 						"Failed to send message: " + e.getMessage() + " (" + e.getClass().getSimpleName() + ")", e);
@@ -175,7 +184,7 @@ public class SignalCLIImpl implements SignalCLI {
 			// re-throw as runtime exception.
 			throw new RuntimeException(ex.getMessage());
 		} finally {
-			closeManager();
+			//closeManager();
 		}
 	}
 
@@ -218,9 +227,8 @@ public class SignalCLIImpl implements SignalCLI {
 		if (generalManager != null) {
 			try {
 				generalManager.close();
-				generalManager = null;
 			} catch (IOException ioex) {
-
+				throw new RuntimeException(ioex);
 			}
 		}
 	}
@@ -245,7 +253,7 @@ public class SignalCLIImpl implements SignalCLI {
 	}
 
 	@Override
-	public void receive() {
+	public List<SignalServiceReceiptMessage> receive() {
 		double timeout = 1;
 		var returnOnTimeout = true;
 		if (timeout < 0) {
@@ -253,27 +261,40 @@ public class SignalCLIImpl implements SignalCLI {
 			timeout = 3600;
 		}
 		boolean ignoreAttachments = false;
-		try {
-			if (generalManager == null) {
-				generalManager = loadManager(userName, getDefaultDataPath(), ServiceEnvironment.LIVE,
-						TrustNewIdentity.ON_FIRST_USE);
-			}
-
-		} catch (CommandException e1) {
-			// TODO Auto-generated catch block
-			e1.printStackTrace();
-		}
+		
 		var m = generalManager;
+
 		try {
 			var outputWriter = new PlainTextWriterImpl(System.out);
-			final var handler = new ReceiveMessageHandler(m, (PlainTextWriter) outputWriter);
+			final var receiptMessages = new ArrayList<SignalServiceReceiptMessage>();
+			final var handler = new ReceiveMessageHandler(m, (PlainTextWriter) outputWriter) {
+
+				@Override
+				public void handleMessage(SignalServiceEnvelope envelope, SignalServiceContent content,
+						Throwable exception) {
+					super.handleMessage(envelope, content, exception);
+					try {
+						if (content != null) {
+							if (content.getReceiptMessage().isPresent()) {
+								writer.println("Received a receipt message");
+								var receiptMessage = content.getReceiptMessage().get();
+								receiptMessages.add(receiptMessage);
+							}
+						}
+					} catch (Exception e) {
+						e.printStackTrace();
+					}
+				}
+			};
 			m.receiveMessages((long) (timeout * 1000), TimeUnit.MILLISECONDS, returnOnTimeout, ignoreAttachments,
 					handler);
 			System.out.println("Receive done.");
+			return receiptMessages;
 		} catch (IOException e) {
-
+			e.printStackTrace();
+			throw new RuntimeException(e);
 		} finally {
-			closeManager();
+			//closeManager();
 		}
 
 	}
@@ -287,7 +308,8 @@ public class SignalCLIImpl implements SignalCLI {
 		try {
 			generalManager = loadManager(userName, getDefaultDataPath(), ServiceEnvironment.LIVE,
 					TrustNewIdentity.ON_FIRST_USE);
-			final var recipient = CommandUtil.getSingleRecipientIdentifier(recipientString, generalManager.getUsername());
+			final var recipient = CommandUtil.getSingleRecipientIdentifier(recipientString,
+					generalManager.getUsername());
 
 			if (type == null || "read".equals(type)) {
 				generalManager.sendReadReceipt(recipient, targetTimestamps);
@@ -297,7 +319,6 @@ public class SignalCLIImpl implements SignalCLI {
 				throw new UserErrorException("Unknown receipt type: " + type);
 			}
 
-			
 		} catch (CommandException e1) {
 			// TODO Auto-generated catch block
 			e1.printStackTrace();
@@ -307,12 +328,22 @@ public class SignalCLIImpl implements SignalCLI {
 		} catch (UntrustedIdentityException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
-		}finally {
-			closeManager();
+		} finally {
+		//	closeManager();
+		}
+
+	}
+
+	@Override
+	public void close() throws IOException {
+		if (generalManager != null) {
+			generalManager.close();
 		}
 		
-
-
+		if (registrationManager != null) {
+			registrationManager.close();
+		}
+		
 	}
 
 }

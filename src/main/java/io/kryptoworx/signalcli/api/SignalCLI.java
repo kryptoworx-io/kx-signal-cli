@@ -1,15 +1,19 @@
 package io.kryptoworx.signalcli.api;
 
+import java.io.Closeable;
 import java.util.List;
 
-public interface SignalCLI {
+import org.asamk.signal.manager.api.SendMessageResults;
+import org.whispersystems.signalservice.api.messages.SignalServiceReceiptMessage;
+
+public interface SignalCLI extends Closeable {
 
     void register(String number, Boolean voiceVerify);
     void registerWithCaptcha(String phoneNumber, String captcha);
     void verify(String code);
     List<String> getRegisteredPhoneNumbers();
-    void send(String message, String targetNumber, String attachmentFileName);
+    SendMessageResults send(String message, String targetNumber, String attachmentFileName);
     void sendReceipt(String receiptNumber, long messageTimestamp);
-    void receive();
+    List<SignalServiceReceiptMessage> receive();
 
 }
