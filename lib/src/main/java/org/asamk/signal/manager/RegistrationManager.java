@@ -25,6 +25,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.prefs.Preferences;
 
+import org.asamk.signal.App;
 import org.asamk.signal.manager.config.ServiceConfig;
 import org.asamk.signal.manager.config.ServiceEnvironment;
 import org.asamk.signal.manager.config.ServiceEnvironmentConfig;
@@ -147,7 +148,7 @@ public class RegistrationManager implements Closeable {
         this.pinHelper = new PinHelper(keyBackupService);
     }
     
-    public static RegistrationManager initInternal(String username)
+    public static RegistrationManager initInternal(String username, byte[] masterKey)
     					throws Exception{
     	String userAgent = "Signal-Android/5.22.3 signal-cli";
     	var pathConfig = PathConfig.createDefault(getDefaultDataPath());
@@ -163,12 +164,13 @@ public class RegistrationManager implements Closeable {
                     identityKey,
                     registrationId,
                     profileKey,
-                    TrustNewIdentity.ON_FIRST_USE);
+                    TrustNewIdentity.ON_FIRST_USE, 
+                    masterKey);
             
             return new RegistrationManager(account,  pathConfig, serviceConfiguration, userAgent);
         }
 
-        var account = SignalAccount.load(pathConfig.getDataPath(), username, true, TrustNewIdentity.ON_FIRST_USE);
+        var account = SignalAccount.load(pathConfig.getDataPath(), username, true, TrustNewIdentity.ON_FIRST_USE, masterKey);
 
         return new RegistrationManager(account, pathConfig, serviceConfiguration, userAgent);
     }
@@ -196,12 +198,13 @@ public class RegistrationManager implements Closeable {
                     identityKey,
                     registrationId,
                     profileKey,
-                    TrustNewIdentity.ON_FIRST_USE);
+                    TrustNewIdentity.ON_FIRST_USE,
+                    null);
 
             return new RegistrationManager(account, pathConfig, serviceConfiguration, userAgent);
         }
 
-        var account = SignalAccount.load(pathConfig.getDataPath(), username, true, TrustNewIdentity.ON_FIRST_USE);
+        var account = SignalAccount.load(pathConfig.getDataPath(), username, true, TrustNewIdentity.ON_FIRST_USE, null);
 
         return new RegistrationManager(account, pathConfig, serviceConfiguration, userAgent);
     }

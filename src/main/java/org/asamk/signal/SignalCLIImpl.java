@@ -6,10 +6,8 @@ import java.nio.charset.Charset;
 import java.security.Security;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Date;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -27,7 +25,6 @@ import org.asamk.signal.manager.UntrustedIdentityException;
 import org.asamk.signal.manager.api.Message;
 import org.asamk.signal.manager.api.RecipientIdentifier;
 import org.asamk.signal.manager.api.SendMessageResults;
-import org.asamk.signal.manager.config.ServiceConfig;
 import org.asamk.signal.manager.config.ServiceEnvironment;
 import org.asamk.signal.manager.groups.GroupNotFoundException;
 import org.asamk.signal.manager.groups.GroupSendingNotAllowedException;
@@ -38,14 +35,10 @@ import org.asamk.signal.util.CommandUtil;
 import org.asamk.signal.util.ErrorUtils;
 import org.asamk.signal.util.IOUtils;
 import org.asamk.signal.util.SecurityProvider;
-import org.bouncycastle.asn1.x509.Time;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
-import org.whispersystems.signalservice.api.KeyBackupServicePinException;
-import org.whispersystems.signalservice.api.KeyBackupSystemNoDataException;
 import org.whispersystems.signalservice.api.messages.SignalServiceContent;
 import org.whispersystems.signalservice.api.messages.SignalServiceEnvelope;
 import org.whispersystems.signalservice.api.messages.SignalServiceReceiptMessage;
-import org.whispersystems.signalservice.internal.push.LockedException;
 
 import io.kryptoworx.signalcli.api.SignalCLI;
 
@@ -91,7 +84,7 @@ public class SignalCLIImpl implements SignalCLI {
 			final TrustNewIdentity trustNewIdentity) throws CommandException {
 		Manager manager;
 		try {
-			manager = Manager.init(username, dataPath, serviceEnvironment, BaseConfig.USER_AGENT, trustNewIdentity);
+			manager = Manager.init(username, dataPath, serviceEnvironment, BaseConfig.USER_AGENT, trustNewIdentity, null);
 		} catch (NotRegisteredException e) {
 			throw new RuntimeException("User " + username + " is not registered.");
 		} catch (Throwable e) {
@@ -113,7 +106,7 @@ public class SignalCLIImpl implements SignalCLI {
 		System.out.println("in register for number: " + phoneNumber);
 
 		try {
-			registrationManager = RegistrationManager.initInternal(userName);
+			registrationManager = RegistrationManager.initInternal(userName, null);
 			registrationManager.register(verifyVoice, null);
 			registrationManager.close();
 			registrationManager = null;
@@ -130,7 +123,7 @@ public class SignalCLIImpl implements SignalCLI {
 			System.out.println("in sending message: ");
 
 			var m = getManager();
-
+			
 			final var recipientStrings = Collections.singletonList(targetNumber);
 
 			final Set<RecipientIdentifier> recipientIdentifiers = CommandUtil.getRecipientIdentifiers(m, false,
@@ -194,7 +187,7 @@ public class SignalCLIImpl implements SignalCLI {
 	@Override
 	public void verify(String code) throws Exception  {
 		
-			registrationManager = RegistrationManager.initInternal(userName);
+			registrationManager = RegistrationManager.initInternal(userName, null);
 			registrationManager.verifyAccount(code, null);
 			registrationManager.close();
 			registrationManager = null;
@@ -244,8 +237,8 @@ public class SignalCLIImpl implements SignalCLI {
 					try (var account = SignalAccount.load(dataPath, u, true, TrustNewIdentity.ON_FIRST_USE)) {
 
 						if (account.isRegistered()) {
-							registeredUsers.add(u);
-						}
+					registeredUsers.add(u);
+				}
 
 					} catch (IOException ex) {
 						// TODO
@@ -271,7 +264,7 @@ public class SignalCLIImpl implements SignalCLI {
 			timeout = 3600;
 		}
 		boolean ignoreAttachments = false;
-
+		
 		try {
 			var m = getManager();
 			var outputWriter = new PlainTextWriterImpl(System.out);
@@ -345,11 +338,11 @@ public class SignalCLIImpl implements SignalCLI {
 		if (generalManager != null) {
 			generalManager.close();
 		}
-
+		
 		if (registrationManager != null) {
 			registrationManager.close();
 		}
-
+		
 	}
 
 }

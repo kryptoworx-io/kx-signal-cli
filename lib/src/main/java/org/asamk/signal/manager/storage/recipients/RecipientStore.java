@@ -1,11 +1,20 @@
 package org.asamk.signal.manager.storage.recipients;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.function.Supplier;
+import java.util.stream.Collectors;
+
+import javax.sql.DataSource;
 
 import org.asamk.signal.manager.storage.Utils;
 import org.asamk.signal.manager.storage.contacts.ContactsStore;
 import org.asamk.signal.manager.storage.profiles.ProfileStore;
-import org.signal.zkgroup.InvalidInputException;
 import org.signal.zkgroup.profiles.ProfileKey;
 import org.signal.zkgroup.profiles.ProfileKeyCredential;
 import org.slf4j.Logger;
@@ -13,111 +22,28 @@ import org.slf4j.LoggerFactory;
 import org.whispersystems.libsignal.util.Pair;
 import org.whispersystems.signalservice.api.push.SignalServiceAddress;
 import org.whispersystems.signalservice.api.push.exceptions.UnregisteredUserException;
-import org.whispersystems.signalservice.api.util.UuidUtil;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Base64;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.Set;
-import java.util.UUID;
-import java.util.function.Supplier;
-import java.util.stream.Collectors;
+import io.kryptoworx.signalcli.storage.H2RecipientMap;
 
-public class RecipientStore implements RecipientResolver, ContactsStore, ProfileStore {
+public class RecipientStore implements RecipientResolver, ContactsStore, ProfileStore, AutoCloseable {
 
     private final static Logger logger = LoggerFactory.getLogger(RecipientStore.class);
 
-    private final ObjectMapper objectMapper;
-    private final File file;
     private final RecipientMergeHandler recipientMergeHandler;
 
-    private final Map<RecipientId, Recipient> recipients;
+    private final H2RecipientMap recipients;
     private final Map<RecipientId, RecipientId> recipientsMerged = new HashMap<>();
 
-    private long lastId;
-
-    public static RecipientStore load(File file, RecipientMergeHandler recipientMergeHandler) throws IOException {
-        final var objectMapper = Utils.createStorageObjectMapper();
-        try (var inputStream = new FileInputStream(file)) {
-            final var storage = objectMapper.readValue(inputStream, Storage.class);
-            final var recipients = storage.recipients.stream().map(r -> {
-                final var recipientId = new RecipientId(r.id);
-                final var address = new RecipientAddress(Optional.ofNullable(r.uuid).map(UuidUtil::parseOrThrow),
-                        Optional.ofNullable(r.number));
-
-                Contact contact = null;
-                if (r.contact != null) {
-                    contact = new Contact(r.contact.name,
-                            r.contact.color,
-                            r.contact.messageExpirationTime,
-                            r.contact.blocked,
-                            r.contact.archived);
-                }
-
-                ProfileKey profileKey = null;
-                if (r.profileKey != null) {
-                    try {
-                        profileKey = new ProfileKey(Base64.getDecoder().decode(r.profileKey));
-                    } catch (InvalidInputException ignored) {
-                    }
-                }
-
-                ProfileKeyCredential profileKeyCredential = null;
-                if (r.profileKeyCredential != null) {
-                    try {
-                        profileKeyCredential = new ProfileKeyCredential(Base64.getDecoder()
-                                .decode(r.profileKeyCredential));
-                    } catch (Throwable ignored) {
-                    }
-                }
-
-                Profile profile = null;
-                if (r.profile != null) {
-                    profile = new Profile(r.profile.lastUpdateTimestamp,
-                            r.profile.givenName,
-                            r.profile.familyName,
-                            r.profile.about,
-                            r.profile.aboutEmoji,
-                            Profile.UnidentifiedAccessMode.valueOfOrUnknown(r.profile.unidentifiedAccessMode),
-                            r.profile.capabilities.stream()
-                                    .map(Profile.Capability::valueOfOrNull)
-                                    .filter(Objects::nonNull)
-                                    .collect(Collectors.toSet()));
-                }
-
-                return new Recipient(recipientId, address, contact, profileKey, profileKeyCredential, profile);
-            }).collect(Collectors.toMap(Recipient::getRecipientId, r -> r));
-
-            return new RecipientStore(objectMapper, file, recipientMergeHandler, recipients, storage.lastId);
-        } catch (FileNotFoundException e) {
-            logger.debug("Creating new recipient store.");
-            return new RecipientStore(objectMapper, file, recipientMergeHandler, new HashMap<>(), 0);
-        }
+    public static RecipientStore load(DataSource dataSource, RecipientMergeHandler recipientMergeHandler) throws IOException {
+    	return new RecipientStore(recipientMergeHandler, new H2RecipientMap(dataSource));
     }
 
     private RecipientStore(
-            final ObjectMapper objectMapper,
-            final File file,
             final RecipientMergeHandler recipientMergeHandler,
-            final Map<RecipientId, Recipient> recipients,
-            final long lastId
+            final H2RecipientMap recipients
     ) {
-        this.objectMapper = objectMapper;
-        this.file = file;
         this.recipientMergeHandler = recipientMergeHandler;
         this.recipients = recipients;
-        this.lastId = lastId;
     }
 
     public RecipientAddress resolveRecipientAddress(RecipientId recipientId) {
@@ -134,7 +60,7 @@ public class RecipientStore implements RecipientResolver, ContactsStore, Profile
             return recipients.get(recipientId);
         }
     }
-
+    
     @Override
     public RecipientId resolveRecipient(UUID uuid) {
         return resolveRecipient(new RecipientAddress(uuid), false);
@@ -214,11 +140,7 @@ public class RecipientStore implements RecipientResolver, ContactsStore, Profile
 
     @Override
     public List<Pair<RecipientId, Contact>> getContacts() {
-        return recipients.entrySet()
-                .stream()
-                .filter(e -> e.getValue().getContact() != null)
-                .map(e -> new Pair<>(e.getKey(), e.getValue().getContact()))
-                .collect(Collectors.toList());
+        return recipients.getContacts();
     }
 
     @Override
@@ -380,7 +302,6 @@ public class RecipientStore implements RecipientResolver, ContactsStore, Profile
             final RecipientId recipientId, final Recipient recipient
     ) {
         recipients.put(recipientId, recipient);
-        saveLocked();
     }
 
     private void mergeRecipientsLocked(RecipientId recipientId, RecipientId toBeMergedRecipientId) {
@@ -398,196 +319,27 @@ public class RecipientStore implements RecipientResolver, ContactsStore, Profile
                                 : toBeMergedRecipient.getProfileKeyCredential(),
                         recipient.getProfile() != null ? recipient.getProfile() : toBeMergedRecipient.getProfile()));
         recipients.remove(toBeMergedRecipientId);
-        saveLocked();
     }
 
     private Optional<Recipient> findByNumberLocked(final String number) {
-        return recipients.entrySet()
-                .stream()
-                .filter(entry -> entry.getValue().getAddress().getNumber().isPresent() && number.equals(entry.getValue()
-                        .getAddress()
-                        .getNumber()
-                        .get()))
-                .findFirst()
-                .map(Map.Entry::getValue);
+    	return Optional.ofNullable(recipients.get(number));
     }
 
     private Optional<Recipient> findByUuidLocked(final UUID uuid) {
-        return recipients.entrySet()
-                .stream()
-                .filter(entry -> entry.getValue().getAddress().getUuid().isPresent() && uuid.equals(entry.getValue()
-                        .getAddress()
-                        .getUuid()
-                        .get()))
-                .findFirst()
-                .map(Map.Entry::getValue);
+    	return Optional.ofNullable(recipients.get(uuid));
     }
 
     private RecipientId nextIdLocked() {
-        return new RecipientId(++this.lastId);
-    }
-
-    private void saveLocked() {
-        final var base64 = Base64.getEncoder();
-        var storage = new Storage(recipients.entrySet().stream().map(pair -> {
-            final var recipient = pair.getValue();
-            final var contact = recipient.getContact() == null
-                    ? null
-                    : new Storage.Recipient.Contact(recipient.getContact().getName(),
-                            recipient.getContact().getColor(),
-                            recipient.getContact().getMessageExpirationTime(),
-                            recipient.getContact().isBlocked(),
-                            recipient.getContact().isArchived());
-            final var profile = recipient.getProfile() == null
-                    ? null
-                    : new Storage.Recipient.Profile(recipient.getProfile().getLastUpdateTimestamp(),
-                            recipient.getProfile().getGivenName(),
-                            recipient.getProfile().getFamilyName(),
-                            recipient.getProfile().getAbout(),
-                            recipient.getProfile().getAboutEmoji(),
-                            recipient.getProfile().getUnidentifiedAccessMode().name(),
-                            recipient.getProfile()
-                                    .getCapabilities()
-                                    .stream()
-                                    .map(Enum::name)
-                                    .collect(Collectors.toSet()));
-            return new Storage.Recipient(pair.getKey().getId(),
-                    recipient.getAddress().getNumber().orElse(null),
-                    recipient.getAddress().getUuid().map(UUID::toString).orElse(null),
-                    recipient.getProfileKey() == null
-                            ? null
-                            : base64.encodeToString(recipient.getProfileKey().serialize()),
-                    recipient.getProfileKeyCredential() == null
-                            ? null
-                            : base64.encodeToString(recipient.getProfileKeyCredential().serialize()),
-                    contact,
-                    profile);
-        }).collect(Collectors.toList()), lastId);
-
-        // Write to memory first to prevent corrupting the file in case of serialization errors
-        try (var inMemoryOutput = new ByteArrayOutputStream()) {
-            objectMapper.writeValue(inMemoryOutput, storage);
-
-            var input = new ByteArrayInputStream(inMemoryOutput.toByteArray());
-            try (var outputStream = new FileOutputStream(file)) {
-                input.transferTo(outputStream);
-            }
-        } catch (Exception e) {
-            logger.error("Error saving recipient store file: {}", e.getMessage());
-        }
-    }
-
-    private static class Storage {
-
-        public List<Recipient> recipients;
-
-        public long lastId;
-
-        // For deserialization
-        private Storage() {
-        }
-
-        public Storage(final List<Recipient> recipients, final long lastId) {
-            this.recipients = recipients;
-            this.lastId = lastId;
-        }
-
-        private static class Recipient {
-
-            public long id;
-            public String number;
-            public String uuid;
-            public String profileKey;
-            public String profileKeyCredential;
-            public Contact contact;
-            public Profile profile;
-
-            // For deserialization
-            private Recipient() {
-            }
-
-            public Recipient(
-                    final long id,
-                    final String number,
-                    final String uuid,
-                    final String profileKey,
-                    final String profileKeyCredential,
-                    final Contact contact,
-                    final Profile profile
-            ) {
-                this.id = id;
-                this.number = number;
-                this.uuid = uuid;
-                this.profileKey = profileKey;
-                this.profileKeyCredential = profileKeyCredential;
-                this.contact = contact;
-                this.profile = profile;
-            }
-
-            private static class Contact {
-
-                public String name;
-                public String color;
-                public int messageExpirationTime;
-                public boolean blocked;
-                public boolean archived;
-
-                // For deserialization
-                public Contact() {
-                }
-
-                public Contact(
-                        final String name,
-                        final String color,
-                        final int messageExpirationTime,
-                        final boolean blocked,
-                        final boolean archived
-                ) {
-                    this.name = name;
-                    this.color = color;
-                    this.messageExpirationTime = messageExpirationTime;
-                    this.blocked = blocked;
-                    this.archived = archived;
-                }
-            }
-
-            private static class Profile {
-
-                public long lastUpdateTimestamp;
-                public String givenName;
-                public String familyName;
-                public String about;
-                public String aboutEmoji;
-                public String unidentifiedAccessMode;
-                public Set<String> capabilities;
-
-                // For deserialization
-                private Profile() {
-                }
-
-                public Profile(
-                        final long lastUpdateTimestamp,
-                        final String givenName,
-                        final String familyName,
-                        final String about,
-                        final String aboutEmoji,
-                        final String unidentifiedAccessMode,
-                        final Set<String> capabilities
-                ) {
-                    this.lastUpdateTimestamp = lastUpdateTimestamp;
-                    this.givenName = givenName;
-                    this.familyName = familyName;
-                    this.about = about;
-                    this.aboutEmoji = aboutEmoji;
-                    this.unidentifiedAccessMode = unidentifiedAccessMode;
-                    this.capabilities = capabilities;
-                }
-            }
-        }
+        return RecipientId.of(recipients.nextRecipientId());
     }
 
     public interface RecipientMergeHandler {
 
         void mergeRecipients(RecipientId recipientId, RecipientId toBeMergedRecipientId);
     }
+
+	@Override
+	public void close() {
+		recipients.close();
+	}
 }

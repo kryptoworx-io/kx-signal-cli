@@ -1,126 +1,76 @@
 package org.asamk.signal.manager.storage.prekeys;
 
-import org.asamk.signal.manager.util.IOUtils;
+import java.io.IOException;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.util.List;
+
+import javax.sql.DataSource;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.whispersystems.libsignal.InvalidKeyIdException;
 import org.whispersystems.libsignal.state.SignedPreKeyRecord;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.nio.file.Files;
-import java.util.Arrays;
-import java.util.List;
-import java.util.regex.Pattern;
-import java.util.stream.Collectors;
+import io.kryptoworx.signalcli.storage.H2Map;
 
-public class SignedPreKeyStore implements org.whispersystems.libsignal.state.SignedPreKeyStore {
+public class SignedPreKeyStore extends H2Map<Integer, SignedPreKeyRecord> implements org.whispersystems.libsignal.state.SignedPreKeyStore, AutoCloseable {
 
     private final static Logger logger = LoggerFactory.getLogger(SignedPreKeyStore.class);
 
-    private final File signedPreKeysPath;
+    public SignedPreKeyStore(DataSource dataSource) {
+    	super(dataSource, "signed_prekeys", 
+    			(id, key) -> key.serialize(), 
+    			(id, bs)  -> deserialize(bs));
+   }
 
-    public SignedPreKeyStore(final File signedPreKeysPath) {
-        this.signedPreKeysPath = signedPreKeysPath;
-    }
+	@Override
+	protected Column<Integer> createPrimaryKeyColumn() {
+		return new Column<>("id", "INT", PreparedStatement::setInt, ResultSet::getInt);
+	}
 
-    @Override
+	@Override
     public SignedPreKeyRecord loadSignedPreKey(int signedPreKeyId) throws InvalidKeyIdException {
-        final var file = getSignedPreKeyFile(signedPreKeyId);
-
-        if (!file.exists()) {
-            throw new InvalidKeyIdException("No such signed pre key record!");
+		SignedPreKeyRecord record = get(signedPreKeyId);
+        if (record == null) {
+            throw new InvalidKeyIdException("No such signed pre-key record!");
         }
-        return loadSignedPreKeyRecord(file);
+        return record;
     }
 
-    final Pattern signedPreKeyFileNamePattern = Pattern.compile("([0-9]+)");
 
     @Override
     public List<SignedPreKeyRecord> loadSignedPreKeys() {
-        final var files = signedPreKeysPath.listFiles();
-        if (files == null) {
-            return List.of();
-        }
-        return Arrays.stream(files)
-                .filter(f -> signedPreKeyFileNamePattern.matcher(f.getName()).matches())
-                .map(this::loadSignedPreKeyRecord)
-                .collect(Collectors.toList());
+    	return getAll();
     }
 
     @Override
     public void storeSignedPreKey(int signedPreKeyId, SignedPreKeyRecord record) {
-        final var file = getSignedPreKeyFile(signedPreKeyId);
-        try {
-            try (var outputStream = new FileOutputStream(file)) {
-                outputStream.write(record.serialize());
-            }
-        } catch (IOException e) {
-            logger.warn("Failed to store signed pre key, trying to delete file and retry: {}", e.getMessage());
-            try {
-                Files.delete(file.toPath());
-                try (var outputStream = new FileOutputStream(file)) {
-                    outputStream.write(record.serialize());
-                }
-            } catch (IOException e2) {
-                logger.error("Failed to store signed pre key file {}: {}", file, e2.getMessage());
-            }
-        }
+        put(signedPreKeyId, record);
     }
 
     @Override
     public boolean containsSignedPreKey(int signedPreKeyId) {
-        final var file = getSignedPreKeyFile(signedPreKeyId);
-
-        return file.exists();
+    	return containsKey(signedPreKeyId);
     }
 
     @Override
     public void removeSignedPreKey(int signedPreKeyId) {
-        final var file = getSignedPreKeyFile(signedPreKeyId);
-
-        if (!file.exists()) {
-            return;
-        }
-        try {
-            Files.delete(file.toPath());
-        } catch (IOException e) {
-            logger.error("Failed to delete signed pre key file {}: {}", file, e.getMessage());
-        }
+    	remove(signedPreKeyId);
     }
 
     public void removeAllSignedPreKeys() {
-        final var files = signedPreKeysPath.listFiles();
-        if (files == null) {
-            return;
-        }
-
-        for (var file : files) {
-            try {
-                Files.delete(file.toPath());
-            } catch (IOException e) {
-                logger.error("Failed to delete signed pre key file {}: {}", file, e.getMessage());
-            }
-        }
+    	remove(null);
     }
 
-    private File getSignedPreKeyFile(int signedPreKeyId) {
-        try {
-            IOUtils.createPrivateDirectories(signedPreKeysPath);
-        } catch (IOException e) {
-            throw new AssertionError("Failed to create signed pre keys path", e);
-        }
-        return new File(signedPreKeysPath, String.valueOf(signedPreKeyId));
-    }
+	private static SignedPreKeyRecord deserialize(byte[] bytes) {
+		try {
+			return new SignedPreKeyRecord(bytes);
+		} catch (IOException e) {
+			String msg = "Failed to decode signed pre-key";
+			logger.error(msg, e);
+            throw new AssertionError(msg, e);
+		}
+	}
 
-    private SignedPreKeyRecord loadSignedPreKeyRecord(final File file) {
-        try (var inputStream = new FileInputStream(file)) {
-            return new SignedPreKeyRecord(inputStream.readAllBytes());
-        } catch (IOException e) {
-            logger.error("Failed to load signed pre key: {}", e.getMessage());
-            throw new AssertionError(e);
-        }
-    }
 }
