@@ -61,20 +61,30 @@ public class SignalCLIImpl implements SignalCLI {
 			Security.insertProviderAt(new SecurityProvider(), 1);
 			Security.addProvider(new BouncyCastleProvider());
 
-			var usernames = Manager.getAllLocalUsernames(getDefaultDataPath());
-			userName = usernames.get(0);
-			
-			generalManager = loadManager(userName, getDefaultDataPath(), ServiceEnvironment.LIVE,
-					TrustNewIdentity.ON_FIRST_USE);
+//			var usernames = Manager.getAllLocalUsernames(getDefaultDataPath());
+//			userName = usernames.get(0);
+//			
+//			generalManager = loadManager(userName, getDefaultDataPath(), ServiceEnvironment.LIVE,
+//					TrustNewIdentity.ON_FIRST_USE);
 
 		} catch (Exception e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
+			throw new RuntimeException(e);
 		}
 	}
 
 	private File getDefaultDataPath() {
 		return new File(IOUtils.getDataHomeDir(), "signal-cli");
+	}
+
+	private Manager getManager() throws Exception {
+		if (generalManager == null) {
+			var usernames = Manager.getAllLocalUsernames(getDefaultDataPath());
+			userName = usernames.get(0);
+			generalManager = loadManager(userName, getDefaultDataPath(), ServiceEnvironment.LIVE,
+					TrustNewIdentity.ON_FIRST_USE);
+		}
+
+		return generalManager;
 	}
 
 	private Manager loadManager(final String username, final File dataPath, final ServiceEnvironment serviceEnvironment,
@@ -83,7 +93,7 @@ public class SignalCLIImpl implements SignalCLI {
 		try {
 			manager = Manager.init(username, dataPath, serviceEnvironment, BaseConfig.USER_AGENT, trustNewIdentity);
 		} catch (NotRegisteredException e) {
-			throw new UserErrorException("User " + username + " is not registered.");
+			throw new RuntimeException("User " + username + " is not registered.");
 		} catch (Throwable e) {
 			throw new UnexpectedErrorException("Error loading state file for user " + username + ": " + e.getMessage()
 					+ " (" + e.getClass().getSimpleName() + ")", e);
@@ -119,12 +129,7 @@ public class SignalCLIImpl implements SignalCLI {
 		try {
 			System.out.println("in sending message: ");
 
-			
-//			generalManager = loadManager(userName, getDefaultDataPath(), ServiceEnvironment.LIVE,
-//							TrustNewIdentity.ON_FIRST_USE);
-			
-			
-			var m = generalManager;
+			var m = getManager();
 
 			final var recipientStrings = Collections.singletonList(targetNumber);
 
@@ -170,7 +175,7 @@ public class SignalCLIImpl implements SignalCLI {
 			try {
 				var results = m.sendMessage(new Message(messageText, attachments), recipientIdentifiers);
 				outputResult(outputWriter, results.getTimestamp());
-				//m.close();
+				// m.close();
 				ErrorUtils.handleSendMessageResults(results.getResults());
 				return results;
 			} catch (AttachmentInvalidException | IOException e) {
@@ -183,22 +188,16 @@ public class SignalCLIImpl implements SignalCLI {
 			// Catch checked exceptions from the underlying API and
 			// re-throw as runtime exception.
 			throw new RuntimeException(ex.getMessage());
-		} finally {
-			//closeManager();
 		}
 	}
 
 	@Override
-	public void verify(String code) {
-		try {
+	public void verify(String code) throws Exception  {
+		
 			registrationManager = RegistrationManager.initInternal(userName);
 			registrationManager.verifyAccount(code, null);
 			registrationManager.close();
 			registrationManager = null;
-			System.out.println("Verified");
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
 
 	}
 
@@ -223,10 +222,10 @@ public class SignalCLIImpl implements SignalCLI {
 		}
 	}
 
-	void closeManager() {
-		if (generalManager != null) {
+	void closeManager(Manager m) {
+		if (m != null) {
 			try {
-				generalManager.close();
+				m.close();
 			} catch (IOException ioex) {
 				throw new RuntimeException(ioex);
 			}
@@ -237,15 +236,26 @@ public class SignalCLIImpl implements SignalCLI {
 	public List<String> getRegisteredPhoneNumbers() {
 		var registeredUsers = new ArrayList<String>();
 		var usernames = Manager.getAllLocalUsernames(getDefaultDataPath());
+		var dataPath = PathConfig.createDefault(getDefaultDataPath()).getDataPath();
 		if (usernames != null) {
 			usernames.forEach(u -> {
-				if (SignalAccount.userExists(PathConfig.createDefault(getDefaultDataPath()).getDataPath(), u)) {
-					registeredUsers.add(u);
+				if (SignalAccount.userExists(dataPath, u)) {
+
+					try (var account = SignalAccount.load(dataPath, u, true, TrustNewIdentity.ON_FIRST_USE)) {
+
+						if (account.isRegistered()) {
+							registeredUsers.add(u);
+						}
+
+					} catch (IOException ex) {
+						// TODO
+						// swallow for now, but decide on what to do with all the exception thrown from
+						// signalcli.
+
+					}
 				}
 			});
-
 			return registeredUsers;
-
 		} else {
 			return Collections.emptyList();
 		}
@@ -261,10 +271,9 @@ public class SignalCLIImpl implements SignalCLI {
 			timeout = 3600;
 		}
 		boolean ignoreAttachments = false;
-		
-		var m = generalManager;
 
 		try {
+			var m = getManager();
 			var outputWriter = new PlainTextWriterImpl(System.out);
 			final var receiptMessages = new ArrayList<SignalServiceReceiptMessage>();
 			final var handler = new ReceiveMessageHandler(m, (PlainTextWriter) outputWriter) {
@@ -290,11 +299,9 @@ public class SignalCLIImpl implements SignalCLI {
 					handler);
 			System.out.println("Receive done.");
 			return receiptMessages;
-		} catch (IOException e) {
+		} catch (Exception e) {
 			e.printStackTrace();
 			throw new RuntimeException(e);
-		} finally {
-			//closeManager();
 		}
 
 	}
@@ -306,15 +313,13 @@ public class SignalCLIImpl implements SignalCLI {
 		final var type = "read";
 
 		try {
-			generalManager = loadManager(userName, getDefaultDataPath(), ServiceEnvironment.LIVE,
-					TrustNewIdentity.ON_FIRST_USE);
-			final var recipient = CommandUtil.getSingleRecipientIdentifier(recipientString,
-					generalManager.getUsername());
+			var m = getManager();
+			final var recipient = CommandUtil.getSingleRecipientIdentifier(recipientString, m.getUsername());
 
 			if (type == null || "read".equals(type)) {
-				generalManager.sendReadReceipt(recipient, targetTimestamps);
+				m.sendReadReceipt(recipient, targetTimestamps);
 			} else if ("viewed".equals(type)) {
-				generalManager.sendViewedReceipt(recipient, targetTimestamps);
+				m.sendViewedReceipt(recipient, targetTimestamps);
 			} else {
 				throw new UserErrorException("Unknown receipt type: " + type);
 			}
@@ -328,8 +333,9 @@ public class SignalCLIImpl implements SignalCLI {
 		} catch (UntrustedIdentityException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
-		} finally {
-		//	closeManager();
+		} catch (Exception e) {
+			// TODO handle
+			e.printStackTrace();
 		}
 
 	}
@@ -339,11 +345,11 @@ public class SignalCLIImpl implements SignalCLI {
 		if (generalManager != null) {
 			generalManager.close();
 		}
-		
+
 		if (registrationManager != null) {
 			registrationManager.close();
 		}
-		
+
 	}
 
 }

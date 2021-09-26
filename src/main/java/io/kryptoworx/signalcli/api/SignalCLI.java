@@ -10,7 +10,7 @@ public interface SignalCLI extends Closeable {
 
     void register(String number, Boolean voiceVerify);
     void registerWithCaptcha(String phoneNumber, String captcha);
-    void verify(String code);
+    void verify(String code) throws Exception;
     List<String> getRegisteredPhoneNumbers();
     SendMessageResults send(String message, String targetNumber, String attachmentFileName);
     void sendReceipt(String receiptNumber, long messageTimestamp);
