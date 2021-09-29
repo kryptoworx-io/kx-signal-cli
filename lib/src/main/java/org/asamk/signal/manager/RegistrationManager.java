@@ -16,11 +16,6 @@
  */
 package org.asamk.signal.manager;
 
-import java.io.Closeable;
-import java.io.File;
-import java.io.IOException;
-import java.util.Locale;
-
 import org.asamk.signal.manager.config.ServiceConfig;
 import org.asamk.signal.manager.config.ServiceEnvironment;
 import org.asamk.signal.manager.config.ServiceEnvironmentConfig;
@@ -47,6 +42,11 @@ import org.whispersystems.signalservice.internal.push.RequestVerificationCodeRes
 import org.whispersystems.signalservice.internal.push.VerifyAccountResponse;
 import org.whispersystems.signalservice.internal.util.DynamicCredentialsProvider;
 
+import java.io.Closeable;
+import java.io.File;
+import java.io.IOException;
+import java.util.Locale;
+
 public class RegistrationManager implements Closeable {
 
     private final static Logger logger = LoggerFactory.getLogger(RegistrationManager.class);
@@ -58,53 +58,6 @@ public class RegistrationManager implements Closeable {
 
     protected final SignalServiceAccountManager accountManager;
     private final PinHelper pinHelper;
-//    private static volatile CompletableFuture<String> GCM_CHALLENGE_FUTURE;
-//    private static Optional<String> GCM_REGISTRATION_TOKEN = Optional.absent();
-//    private final static GcmClient GCM_CLIENT = createGcmClient();
-
-    /*
-    private static GcmClient createGcmClient()  {
-        try {
-            return tryCreateGcmClient();
-        } catch (Exception e) {
-            logger.error("Cannot start GCM receiver", e);
-            return null;
-        }
-    }
-
-    private static GcmClient tryCreateGcmClient() throws IOException {
-        Preferences prefs = Preferences.userRoot().node("/io/kryptoworx/gcm");
-        long androidId = prefs.getLong("androidId", 0);
-        long securityToken = prefs.getLong("securityToken", 0);
-        String persistentId = prefs.get("persistentId", null);
-        OkHttpClient httpClient = new OkHttpClient();
-
-        GcmClient gcmClient = new GcmClient(new OkHttpTransport(httpClient), 312334754206L);
-        gcmClient.setAndroidId(androidId);
-        gcmClient.setSecurityToken(securityToken);
-        if (persistentId != null) {
-            gcmClient.setPersistentId(persistentId);
-        }
-        gcmClient.setMessageListener(new GcmMessageListener() {
-            @Override
-            public void onMessage(String persistentId, Map<String, String> appData) {
-                prefs.put("persistentId", persistentId);
-                CompletableFuture<String> f = GCM_CHALLENGE_FUTURE;
-                if (f == null) return;
-                String challenge = appData.get("challenge");
-                if (challenge != null) f.complete(challenge);
-            }
-        });
-        try {
-            GCM_REGISTRATION_TOKEN = Optional.of(gcmClient.start());
-        } catch (HttpException e) {
-            throw new IOException("Failed to start GCM client", e);
-        }
-        prefs.putLong("androidId", gcmClient.getAndroidId());
-        prefs.putLong("securityToken", gcmClient.getSecurityToken());
-        return gcmClient;
-    }
-    */
     
     public RegistrationManager(
             SignalAccount account,
@@ -138,37 +91,10 @@ public class RegistrationManager implements Closeable {
         this.pinHelper = new PinHelper(keyBackupService);
     }
     
-    public static RegistrationManager initInternal(String username, byte[] masterKey)
-    					throws Exception{
-    	String userAgent = "Signal-Android/5.22.3 signal-cli";
-    	var pathConfig = PathConfig.createDefault(getDefaultDataPath());
-        final var serviceConfiguration = ServiceConfig.getServiceEnvironmentConfig(ServiceEnvironment.LIVE, userAgent);
-        
-        if (!SignalAccount.userExists(pathConfig.getDataPath(), username)) {
-            var identityKey = KeyUtils.generateIdentityKeyPair();
-            var registrationId = KeyHelper.generateRegistrationId(false);
-
-            var profileKey = KeyUtils.createProfileKey();
-            var account = SignalAccount.create(pathConfig.getDataPath(),
-                    username,
-                    identityKey,
-                    registrationId,
-                    profileKey,
-                    TrustNewIdentity.ON_FIRST_USE, 
-                    masterKey);
-            
-            return new RegistrationManager(account,  pathConfig, serviceConfiguration, userAgent);
-        }
-
-        var account = SignalAccount.load(pathConfig.getDataPath(), username, true, TrustNewIdentity.ON_FIRST_USE, masterKey);
-
-        return new RegistrationManager(account, pathConfig, serviceConfiguration, userAgent);
-    }
-    
     /**
      * @return the default data directory to be used by signal-cli.
      */
-    protected static File getDefaultDataPath() {
+    public static File getDefaultDataPath() {
         return new File(IOUtils.getDataHomeDir(), "signal-cli");
     }
 
@@ -188,13 +114,12 @@ public class RegistrationManager implements Closeable {
                     identityKey,
                     registrationId,
                     profileKey,
-                    TrustNewIdentity.ON_FIRST_USE,
-                    null);
+                    TrustNewIdentity.ON_FIRST_USE);
 
             return new RegistrationManager(account, pathConfig, serviceConfiguration, userAgent);
         }
 
-        var account = SignalAccount.load(pathConfig.getDataPath(), username, true, TrustNewIdentity.ON_FIRST_USE, null);
+        var account = SignalAccount.load(pathConfig.getDataPath(), username, true, TrustNewIdentity.ON_FIRST_USE);
 
         return new RegistrationManager(account, pathConfig, serviceConfiguration, userAgent);
     }

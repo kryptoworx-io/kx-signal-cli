@@ -1,37 +1,20 @@
 package org.asamk.signal.manager.storage;
 
-import java.io.ByteArrayInputStream;
-import java.io.Closeable;
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.io.RandomAccessFile;
-import java.nio.ByteBuffer;
-import java.nio.channels.Channels;
-import java.nio.channels.ClosedChannelException;
-import java.nio.channels.FileChannel;
-import java.nio.channels.FileLock;
-import java.security.GeneralSecurityException;
-import java.util.Base64;
-import java.util.Date;
-import java.util.HashSet;
-import java.util.List;
-import java.util.UUID;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
-import javax.crypto.spec.SecretKeySpec;
-import javax.sql.DataSource;
-
-import org.apache.commons.codec.binary.Hex;
 import org.asamk.signal.manager.TrustLevel;
 import org.asamk.signal.manager.groups.GroupId;
 import org.asamk.signal.manager.storage.contacts.ContactsStore;
 import org.asamk.signal.manager.storage.contacts.LegacyJsonContactsStore;
 import org.asamk.signal.manager.storage.groups.GroupInfoV1;
 import org.asamk.signal.manager.storage.groups.GroupStore;
+import org.asamk.signal.manager.storage.identities.IIdentityKeyStore;
 import org.asamk.signal.manager.storage.identities.IdentityKeyStore;
 import org.asamk.signal.manager.storage.identities.TrustNewIdentity;
 import org.asamk.signal.manager.storage.messageCache.MessageCache;
+import org.asamk.signal.manager.storage.prekeys.IPreKeyStore;
+import org.asamk.signal.manager.storage.prekeys.ISignedPreKeyStore;
 import org.asamk.signal.manager.storage.prekeys.PreKeyStore;
 import org.asamk.signal.manager.storage.prekeys.SignedPreKeyStore;
 import org.asamk.signal.manager.storage.profiles.LegacyProfileStore;
@@ -39,19 +22,19 @@ import org.asamk.signal.manager.storage.profiles.ProfileStore;
 import org.asamk.signal.manager.storage.protocol.LegacyJsonSignalProtocolStore;
 import org.asamk.signal.manager.storage.protocol.SignalProtocolStore;
 import org.asamk.signal.manager.storage.recipients.Contact;
+import org.asamk.signal.manager.storage.recipients.IRecipientStore;
 import org.asamk.signal.manager.storage.recipients.LegacyRecipientStore;
 import org.asamk.signal.manager.storage.recipients.Profile;
 import org.asamk.signal.manager.storage.recipients.RecipientAddress;
 import org.asamk.signal.manager.storage.recipients.RecipientId;
 import org.asamk.signal.manager.storage.recipients.RecipientStore;
 import org.asamk.signal.manager.storage.senderKeys.SenderKeyStore;
+import org.asamk.signal.manager.storage.sessions.ISessionStore;
 import org.asamk.signal.manager.storage.sessions.SessionStore;
 import org.asamk.signal.manager.storage.stickers.StickerStore;
 import org.asamk.signal.manager.storage.threads.LegacyJsonThreadStore;
 import org.asamk.signal.manager.util.IOUtils;
 import org.asamk.signal.manager.util.KeyUtils;
-import org.h2.jdbcx.JdbcConnectionPool;
-import org.signal.libsignal.crypto.jce.Mac;
 import org.signal.zkgroup.InvalidInputException;
 import org.signal.zkgroup.profiles.ProfileKey;
 import org.slf4j.Logger;
@@ -69,19 +52,28 @@ import org.whispersystems.signalservice.api.push.SignalServiceAddress;
 import org.whispersystems.signalservice.api.storage.StorageKey;
 import org.whispersystems.signalservice.api.util.UuidUtil;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.ByteArrayInputStream;
+import java.io.Closeable;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.RandomAccessFile;
+import java.nio.channels.Channels;
+import java.nio.channels.ClosedChannelException;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
+import java.util.Base64;
+import java.util.Date;
+import java.util.HashSet;
+import java.util.List;
+import java.util.UUID;
 
-import io.kryptoworx.signalcli.storage.CipherStreamFactory;
 import io.kryptoworx.signalcli.storage.NonCloseableOutputStream;
 
 public class SignalAccount implements Closeable {
 
     private final static Logger logger = LoggerFactory.getLogger(SignalAccount.class);
-    private static final String HMAC = "HmacSHA512/256";
-    private final static UUID ID_ACCOUNT = UUID.fromString("7942598d-c34b-495a-b0cb-383766f6ba6f");
-    private final static UUID ID_DATABASE = UUID.fromString("bc6bc781-f8e8-4636-849c-69de4079bea3");
-    
     
     private static final int MINIMUM_STORAGE_VERSION = 1;
     private static final int CURRENT_STORAGE_VERSION = 2;
@@ -90,9 +82,8 @@ public class SignalAccount implements Closeable {
 
     private final FileChannel fileChannel;
     private final FileLock lock;
-    private final DataSource dataSource;
 
-    private String username;
+    protected String username;
     private UUID uuid;
     private String encryptedDeviceName;
     private int deviceId = SignalServiceAddress.DEFAULT_DEVICE_ID;
@@ -102,45 +93,40 @@ public class SignalAccount implements Closeable {
     private MasterKey pinMasterKey;
     private StorageKey storageKey;
     private long storageManifestVersion = -1;
-    private ProfileKey profileKey;
+    protected ProfileKey profileKey;
     private int preKeyIdOffset;
     private int nextSignedPreKeyId;
     private long lastReceiveTimestamp = 0;
 
-    private boolean registered = false;
+    protected boolean registered = false;
 
-    private SignalProtocolStore signalProtocolStore;
-    private PreKeyStore preKeyStore;
-    private SignedPreKeyStore signedPreKeyStore;
-    private SessionStore sessionStore;
-    private IdentityKeyStore identityKeyStore;
-    private SenderKeyStore senderKeyStore;
-    private GroupStore groupStore;
+    protected SignalProtocolStore signalProtocolStore;
+    protected IPreKeyStore preKeyStore;
+    protected ISignedPreKeyStore signedPreKeyStore;
+    protected ISessionStore sessionStore;
+    protected IIdentityKeyStore identityKeyStore;
+    protected SenderKeyStore senderKeyStore;
+    protected GroupStore groupStore;
     private GroupStore.Storage groupStoreStorage;
-    private RecipientStore recipientStore;
-    private StickerStore stickerStore;
+    protected IRecipientStore recipientStore;
+    protected StickerStore stickerStore;
     private StickerStore.Storage stickerStoreStorage;
-    private final CipherStreamFactory cipherStreamFactory;
 
-    private MessageCache messageCache;
+    protected MessageCache messageCache;
 
-    private SignalAccount(final DataSource dataSource, final FileChannel fileChannel, final FileLock lock, byte[] masterKey) {
-    	this.dataSource = dataSource;
+    protected SignalAccount(final FileChannel fileChannel, final FileLock lock) {
         this.fileChannel = fileChannel;
         this.lock = lock;
-    	this.cipherStreamFactory = masterKey != null ? new CipherStreamFactory(ID_ACCOUNT, masterKey) : null;
     }
-
+    
     public static SignalAccount load(
-            File dataPath, String username, boolean waitForLock, final TrustNewIdentity trustNewIdentity,
-            byte[] masterKey
+            File dataPath, String username, boolean waitForLock, final TrustNewIdentity trustNewIdentity
     ) throws IOException {
-    	DataSource dataSource = createDataSource(dataPath, username, masterKey);
         final var fileName = getFileName(dataPath, username);
         final var pair = openFileChannel(fileName, waitForLock);
         try {
-            var account = new SignalAccount(dataSource, pair.first(), pair.second(), masterKey);
-            account.load(username, dataPath, trustNewIdentity, masterKey);
+            var account = new SignalAccount(pair.first(), pair.second());
+            account.load(username, dataPath, trustNewIdentity);
             account.migrateLegacyConfigs();
 
             return account;
@@ -150,31 +136,6 @@ public class SignalAccount implements Closeable {
             throw e;
         }
     }
-    
-    private static DataSource createDataSource(File dataPath, String username, byte[] masterKey) {
-    	String dbPassword = "";
-    	if (masterKey != null && masterKey.length > 0) {
-	    	try {
-	    		Mac hmac = Mac.getInstance(HMAC);
-	    		SecretKeySpec secretKey = new SecretKeySpec(masterKey, HMAC);
-	    		hmac.init(secretKey);
-	    		byte[] idBytes = new byte[16];
-	    		ByteBuffer idBuf = ByteBuffer.wrap(idBytes);
-	    		idBuf.putLong(ID_DATABASE.getMostSignificantBits());
-	    		idBuf.putLong(ID_DATABASE.getLeastSignificantBits());
-	    		byte[] dbKey = hmac.doFinal(idBytes);
-	    		dbPassword = Hex.encodeHexString(dbKey) + " ";
-	    	} catch (GeneralSecurityException e) {
-	    		throw new AssertionError("Failed to derive database key", e);
-	    	}
-    	}
-    	File dbFile = getDatabaseFile(dataPath, username);
-    	String databaseUrl = "jdbc:h2:file:" + dbFile;
-    	if (!dbPassword.isEmpty()) databaseUrl += ";cipher=AES";
-		JdbcConnectionPool jdbcPool = JdbcConnectionPool.create(databaseUrl, "", dbPassword);
-		jdbcPool.setMaxConnections(4);
-		return jdbcPool;
-    }
 
     public static SignalAccount create(
             File dataPath,
@@ -182,8 +143,7 @@ public class SignalAccount implements Closeable {
             IdentityKeyPair identityKey,
             int registrationId,
             ProfileKey profileKey,
-            final TrustNewIdentity trustNewIdentity,
-            final byte[] masterKey
+            final TrustNewIdentity trustNewIdentity
     ) throws IOException {
         IOUtils.createPrivateDirectories(dataPath);
         var fileName = getFileName(dataPath, username);
@@ -192,12 +152,12 @@ public class SignalAccount implements Closeable {
         }
 
         final var pair = openFileChannel(fileName, true);
-        var account = new SignalAccount(createDataSource(dataPath, username, masterKey), pair.first(), pair.second(), masterKey);
+        var account = new SignalAccount(pair.first(), pair.second());
 
         account.username = username;
         account.profileKey = profileKey;
 
-        account.initStores(dataPath, identityKey, registrationId, trustNewIdentity, masterKey);
+        account.initStores(dataPath, identityKey, registrationId, trustNewIdentity);
         account.groupStore = new GroupStore(getGroupCachePath(dataPath, username),
                 account.recipientStore,
                 account::saveGroupStore);
@@ -211,23 +171,22 @@ public class SignalAccount implements Closeable {
         return account;
     }
 
-    private void initStores(
+    protected void initStores(
             final File dataPath,
             final IdentityKeyPair identityKey,
             final int registrationId,
-            final TrustNewIdentity trustNewIdentity,
-            final byte[] masterKey
+            final TrustNewIdentity trustNewIdentity
     ) throws IOException {
-        recipientStore = RecipientStore.load(dataSource, this::mergeRecipients);
-        preKeyStore = new PreKeyStore(dataSource);
-        signedPreKeyStore = new SignedPreKeyStore(dataSource);
-        sessionStore = new SessionStore(dataSource, recipientStore);
-        identityKeyStore = new IdentityKeyStore(dataSource,
+        recipientStore = RecipientStore.load(getRecipientsStoreFile(dataPath, username), this::mergeRecipients);
+
+        preKeyStore = new PreKeyStore(getPreKeysPath(dataPath, username));
+        signedPreKeyStore = new SignedPreKeyStore(getSignedPreKeysPath(dataPath, username));
+        sessionStore = new SessionStore(getSessionsPath(dataPath, username), recipientStore);
+        identityKeyStore = new IdentityKeyStore(getIdentitiesPath(dataPath, username),
                 recipientStore,
                 identityKey,
                 registrationId,
-                trustNewIdentity,
-                masterKey);
+                trustNewIdentity);
         senderKeyStore = new SenderKeyStore(getSharedSenderKeysFile(dataPath, username),
                 getSenderKeysPath(dataPath, username),
                 recipientStore::resolveRecipientAddress,
@@ -252,8 +211,7 @@ public class SignalAccount implements Closeable {
             IdentityKeyPair identityKey,
             int registrationId,
             ProfileKey profileKey,
-            final TrustNewIdentity trustNewIdentity,
-            final byte[] masterKey
+            final TrustNewIdentity trustNewIdentity
     ) throws IOException {
         IOUtils.createPrivateDirectories(dataPath);
         var fileName = getFileName(dataPath, username);
@@ -267,11 +225,10 @@ public class SignalAccount implements Closeable {
                     identityKey,
                     registrationId,
                     profileKey,
-                    trustNewIdentity,
-                    masterKey);
+                    trustNewIdentity);
         }
 
-        final var account = load(dataPath, username, true, trustNewIdentity, masterKey);
+        final var account = load(dataPath, username, true, trustNewIdentity);
         account.setProvisioningData(username, uuid, password, encryptedDeviceName, deviceId, profileKey);
         account.recipientStore.resolveRecipientTrusted(account.getSelfAddress());
         account.sessionStore.archiveAllSessions();
@@ -298,18 +255,17 @@ public class SignalAccount implements Closeable {
             IdentityKeyPair identityKey,
             int registrationId,
             ProfileKey profileKey,
-            final TrustNewIdentity trustNewIdentity,
-            final byte[] masterKey
+            final TrustNewIdentity trustNewIdentity
     ) throws IOException {
         var fileName = getFileName(dataPath, username);
         IOUtils.createPrivateFile(fileName);
 
         final var pair = openFileChannel(fileName, true);
-        var account = new SignalAccount(createDataSource(dataPath, username, masterKey), pair.first(), pair.second(), masterKey);
+        var account = new SignalAccount(pair.first(), pair.second());
 
         account.setProvisioningData(username, uuid, password, encryptedDeviceName, deviceId, profileKey);
 
-        account.initStores(dataPath, identityKey, registrationId, trustNewIdentity, masterKey);
+        account.initStores(dataPath, identityKey, registrationId, trustNewIdentity);
         account.groupStore = new GroupStore(getGroupCachePath(dataPath, username),
                 account.recipientStore,
                 account::saveGroupStore);
@@ -344,7 +300,7 @@ public class SignalAccount implements Closeable {
         this.storageKey = null;
     }
 
-    private void migrateLegacyConfigs() {
+    protected void migrateLegacyConfigs() {
         if (getPassword() == null) {
             setPassword(KeyUtils.createPassword());
         }
@@ -357,7 +313,7 @@ public class SignalAccount implements Closeable {
         getProfileStore().storeProfileKey(getSelfRecipientId(), getProfileKey());
     }
 
-    private void mergeRecipients(RecipientId recipientId, RecipientId toBeMergedRecipientId) {
+    protected void mergeRecipients(RecipientId recipientId, RecipientId toBeMergedRecipientId) {
         sessionStore.mergeRecipients(recipientId, toBeMergedRecipientId);
         identityKeyStore.mergeRecipients(recipientId, toBeMergedRecipientId);
         messageCache.mergeRecipients(recipientId, toBeMergedRecipientId);
@@ -369,7 +325,7 @@ public class SignalAccount implements Closeable {
         return new File(dataPath, username);
     }
 
-    private static File getUserPath(final File dataPath, final String username) {
+    public static File getUserPath(final File dataPath, final String username) {
         final var path = new File(dataPath, username + ".d");
         try {
             IOUtils.createPrivateDirectories(path);
@@ -379,24 +335,40 @@ public class SignalAccount implements Closeable {
         return path;
     }
 
-    private static File getMessageCachePath(File dataPath, String username) {
+    protected static File getMessageCachePath(File dataPath, String username) {
         return new File(getUserPath(dataPath, username), "msg-cache");
     }
 
-    private static File getGroupCachePath(File dataPath, String username) {
+    protected static File getGroupCachePath(File dataPath, String username) {
         return new File(getUserPath(dataPath, username), "group-cache");
     }
 
-    private static File getSenderKeysPath(File dataPath, String username) {
+    private static File getPreKeysPath(File dataPath, String username) {
+        return new File(getUserPath(dataPath, username), "pre-keys");
+    }
+
+    private static File getSignedPreKeysPath(File dataPath, String username) {
+        return new File(getUserPath(dataPath, username), "signed-pre-keys");
+    }
+
+    private static File getIdentitiesPath(File dataPath, String username) {
+        return new File(getUserPath(dataPath, username), "identities");
+    }
+
+    private static File getSessionsPath(File dataPath, String username) {
+        return new File(getUserPath(dataPath, username), "sessions");
+    }
+
+    protected static File getSenderKeysPath(File dataPath, String username) {
         return new File(getUserPath(dataPath, username), "sender-keys");
     }
 
-    private static File getSharedSenderKeysFile(File dataPath, String username) {
+    protected static File getSharedSenderKeysFile(File dataPath, String username) {
         return new File(getUserPath(dataPath, username), "shared-sender-keys-store");
     }
 
-    private static File getDatabaseFile(File dataPath, String username) {
-        return new File(getUserPath(dataPath, username), "storage");
+    private static File getRecipientsStoreFile(File dataPath, String username) {
+        return new File(getUserPath(dataPath, username), "recipients-store");
     }
 
     public static boolean userExists(File dataPath, String username) {
@@ -407,8 +379,8 @@ public class SignalAccount implements Closeable {
         return !(!f.exists() || f.isDirectory());
     }
 
-    private void load(
-            String username, File dataPath, final TrustNewIdentity trustNewIdentity, byte[] masterKey
+    protected void load(
+            String username, File dataPath, final TrustNewIdentity trustNewIdentity
     ) throws IOException {
         JsonNode rootNode;
         synchronized (fileChannel) {
@@ -507,7 +479,7 @@ public class SignalAccount implements Closeable {
             migratedLegacyConfig = true;
         }
 
-        initStores(dataPath, identityKeyPair, registrationId, trustNewIdentity, masterKey);
+        initStores(dataPath, identityKeyPair, registrationId, trustNewIdentity);
 
         migratedLegacyConfig = loadLegacyStores(rootNode, legacySignalProtocolStore) || migratedLegacyConfig;
 
@@ -704,17 +676,17 @@ public class SignalAccount implements Closeable {
         return false;
     }
 
-    private void saveStickerStore(StickerStore.Storage storage) {
+    protected void saveStickerStore(StickerStore.Storage storage) {
         this.stickerStoreStorage = storage;
         save();
     }
 
-    private void saveGroupStore(GroupStore.Storage storage) {
+    protected void saveGroupStore(GroupStore.Storage storage) {
         this.groupStoreStorage = storage;
         save();
     }
 
-    private void save() {
+    protected void save() {
         synchronized (fileChannel) {
             var rootNode = jsonProcessor.createObjectNode();
             rootNode.put("version", CURRENT_STORAGE_VERSION)
@@ -760,19 +732,15 @@ public class SignalAccount implements Closeable {
         }
     }
     
-    private OutputStream createOutputStream() throws IOException {
-    	OutputStream out = NonCloseableOutputStream.create(fileChannel);
-    	return cipherStreamFactory != null
-    			? cipherStreamFactory.createOutputStream(username, out)
-    			: out;
+    protected OutputStream createOutputStream() throws IOException {
+    	return NonCloseableOutputStream.create(fileChannel);
     }
     
-    private InputStream createInputStream() throws IOException {
-    	InputStream in = Channels.newInputStream(fileChannel);
-    	return cipherStreamFactory != null ? cipherStreamFactory.createInputStream(username, in) : in;
+    protected InputStream createInputStream() throws IOException {
+    	return Channels.newInputStream(fileChannel);
     }
 
-    private static Pair<FileChannel, FileLock> openFileChannel(File fileName, boolean waitForLock) throws IOException {
+    protected static Pair<FileChannel, FileLock> openFileChannel(File fileName, boolean waitForLock) throws IOException {
         var fileChannel = new RandomAccessFile(fileName, "rw").getChannel();
         var lock = fileChannel.tryLock();
         if (lock == null) {
@@ -813,11 +781,11 @@ public class SignalAccount implements Closeable {
         return signalProtocolStore;
     }
 
-    public SessionStore getSessionStore() {
+    public ISessionStore getSessionStore() {
         return sessionStore;
     }
 
-    public IdentityKeyStore getIdentityKeyStore() {
+    public IIdentityKeyStore getIdentityKeyStore() {
         return identityKeyStore;
     }
 
@@ -829,7 +797,7 @@ public class SignalAccount implements Closeable {
         return recipientStore;
     }
 
-    public RecipientStore getRecipientStore() {
+    public IRecipientStore getRecipientStore() {
         return recipientStore;
     }
 
@@ -1037,12 +1005,6 @@ public class SignalAccount implements Closeable {
 
     @Override
     public void close() throws IOException {
-    	identityKeyStore.close();
-    	sessionStore.close();
-    	signedPreKeyStore.close();
-    	preKeyStore.close();
-    	recipientStore.close();
-    	
         synchronized (fileChannel) {
             try {
                 lock.close();

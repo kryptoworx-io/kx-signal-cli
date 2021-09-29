@@ -1,68 +1,104 @@
 package org.asamk.signal.manager.storage.prekeys;
 
-import java.io.IOException;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-
-import javax.sql.DataSource;
-
+import org.asamk.signal.manager.util.IOUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.whispersystems.libsignal.InvalidKeyIdException;
 import org.whispersystems.libsignal.state.PreKeyRecord;
 
-import io.kryptoworx.signalcli.storage.H2Map;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.nio.file.Files;
 
-public class PreKeyStore extends H2Map<Integer, PreKeyRecord> implements org.whispersystems.libsignal.state.PreKeyStore, AutoCloseable {
+public class PreKeyStore implements IPreKeyStore {
 
     private final static Logger logger = LoggerFactory.getLogger(PreKeyStore.class);
-    
-    public PreKeyStore(DataSource dataSource) {
-    	super(dataSource, "prekeys", 
-    			(id, key) -> key.serialize(), 
-    			(id, bs)  -> deserialize(bs));
+
+    private final File preKeysPath;
+
+    public PreKeyStore(final File preKeysPath) {
+        this.preKeysPath = preKeysPath;
     }
-    
-	@Override
-	protected Column<Integer> createPrimaryKeyColumn() {
-		return new Column<>("id", "INT", PreparedStatement::setInt, ResultSet::getInt);
-	}
 
     @Override
     public PreKeyRecord loadPreKey(int preKeyId) throws InvalidKeyIdException {
-    	PreKeyRecord record = get(preKeyId);
-        if (record == null) {
-            throw new InvalidKeyIdException("No such pre-key record!");
+        final var file = getPreKeyFile(preKeyId);
+
+        if (!file.exists()) {
+            throw new InvalidKeyIdException("No such pre key record!");
         }
-        return record;
+        try (var inputStream = new FileInputStream(file)) {
+            return new PreKeyRecord(inputStream.readAllBytes());
+        } catch (IOException e) {
+            logger.error("Failed to load pre key: {}", e.getMessage());
+            throw new AssertionError(e);
+        }
     }
 
     @Override
     public void storePreKey(int preKeyId, PreKeyRecord record) {
-    	put(preKeyId, record);
+        final var file = getPreKeyFile(preKeyId);
+        try {
+            try (var outputStream = new FileOutputStream(file)) {
+                outputStream.write(record.serialize());
+            }
+        } catch (IOException e) {
+            logger.warn("Failed to store pre key, trying to delete file and retry: {}", e.getMessage());
+            try {
+                Files.delete(file.toPath());
+                try (var outputStream = new FileOutputStream(file)) {
+                    outputStream.write(record.serialize());
+                }
+            } catch (IOException e2) {
+                logger.error("Failed to store pre key file {}: {}", file, e2.getMessage());
+            }
+        }
     }
 
     @Override
     public boolean containsPreKey(int preKeyId) {
-    	return containsKey(preKeyId);
+        final var file = getPreKeyFile(preKeyId);
+
+        return file.exists();
     }
 
     @Override
     public void removePreKey(int preKeyId) {
-    	remove(preKeyId);
+        final var file = getPreKeyFile(preKeyId);
+
+        if (!file.exists()) {
+            return;
+        }
+        try {
+            Files.delete(file.toPath());
+        } catch (IOException e) {
+            logger.error("Failed to delete pre key file {}: {}", file, e.getMessage());
+        }
     }
 
     public void removeAllPreKeys() {
-    	remove(null);
+        final var files = preKeysPath.listFiles();
+        if (files == null) {
+            return;
+        }
+
+        for (var file : files) {
+            try {
+                Files.delete(file.toPath());
+            } catch (IOException e) {
+                logger.error("Failed to delete pre key file {}: {}", file, e.getMessage());
+            }
+        }
     }
 
-	private static PreKeyRecord deserialize(byte[] bytes) {
-		try {
-			return new PreKeyRecord(bytes);
-		} catch (IOException e) {
-			String msg = "Failed to decode pre-key";
-			logger.error(msg, e);
-            throw new AssertionError(msg, e);
-		}
-	}
+    private File getPreKeyFile(int preKeyId) {
+        try {
+            IOUtils.createPrivateDirectories(preKeysPath);
+        } catch (IOException e) {
+            throw new AssertionError("Failed to create pre keys path", e);
+        }
+        return new File(preKeysPath, String.valueOf(preKeyId));
+    }
 }

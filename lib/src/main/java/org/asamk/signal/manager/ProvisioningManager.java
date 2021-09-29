@@ -125,8 +125,7 @@ public class ProvisioningManager {
                     ret.getIdentity(),
                     registrationId,
                     profileKey,
-                    TrustNewIdentity.ON_FIRST_USE,
-                    null);
+                    TrustNewIdentity.ON_FIRST_USE);
 
             Manager m = null;
             try {
@@ -168,7 +167,7 @@ public class ProvisioningManager {
     private boolean canRelinkExistingAccount(final String number) throws IOException {
         final SignalAccount signalAccount;
         try {
-            signalAccount = SignalAccount.load(pathConfig.getDataPath(), number, false, TrustNewIdentity.ON_FIRST_USE, null);
+            signalAccount = SignalAccount.load(pathConfig.getDataPath(), number, false, TrustNewIdentity.ON_FIRST_USE);
         } catch (IOException e) {
             logger.debug("Account in use or failed to load.", e);
             return false;

@@ -1,27 +1,42 @@
 package org.asamk.signal.manager.storage.identities;
 
-import java.io.IOException;
-import java.util.Date;
-import java.util.List;
-
-import javax.sql.DataSource;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.asamk.signal.manager.TrustLevel;
 import org.asamk.signal.manager.storage.recipients.RecipientId;
 import org.asamk.signal.manager.storage.recipients.RecipientResolver;
+import org.asamk.signal.manager.util.IOUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.whispersystems.libsignal.IdentityKey;
 import org.whispersystems.libsignal.IdentityKeyPair;
+import org.whispersystems.libsignal.InvalidKeyException;
 import org.whispersystems.libsignal.SignalProtocolAddress;
 
-import io.kryptoworx.signalcli.storage.H2IdentityMap;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.util.Arrays;
+import java.util.Base64;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
-public class IdentityKeyStore implements org.whispersystems.libsignal.state.IdentityKeyStore, AutoCloseable {
+public class IdentityKeyStore implements IIdentityKeyStore {
 
     private final static Logger logger = LoggerFactory.getLogger(IdentityKeyStore.class);
+    private final ObjectMapper objectMapper = org.asamk.signal.manager.storage.Utils.createStorageObjectMapper();
 
-    private final H2IdentityMap identityMap;
+    private final Map<RecipientId, IdentityInfo> cachedIdentities = new HashMap<>();
+
+    private final File identitiesPath;
 
     private final RecipientResolver resolver;
     private final IdentityKeyPair identityKeyPair;
@@ -29,18 +44,17 @@ public class IdentityKeyStore implements org.whispersystems.libsignal.state.Iden
     private final TrustNewIdentity trustNewIdentity;
 
     public IdentityKeyStore(
-            final DataSource dataSource,
+            final File identitiesPath,
             final RecipientResolver resolver,
             final IdentityKeyPair identityKeyPair,
             final int localRegistrationId,
-            final TrustNewIdentity trustNewIdentity,
-            final byte[] masterKey
-    ) throws IOException {
+            final TrustNewIdentity trustNewIdentity
+    ) {
+        this.identitiesPath = identitiesPath;
         this.resolver = resolver;
         this.identityKeyPair = identityKeyPair;
         this.localRegistrationId = localRegistrationId;
         this.trustNewIdentity = trustNewIdentity;
-        this.identityMap = new H2IdentityMap(dataSource);
     }
 
     @Override
@@ -61,7 +75,7 @@ public class IdentityKeyStore implements org.whispersystems.libsignal.state.Iden
     }
 
     public boolean saveIdentity(final RecipientId recipientId, final IdentityKey identityKey, Date added) {
-        synchronized (identityMap) {
+        synchronized (cachedIdentities) {
             final var identityInfo = loadIdentityLocked(recipientId);
             if (identityInfo != null && identityInfo.getIdentityKey().equals(identityKey)) {
                 // Identity already exists, not updating the trust level
@@ -81,7 +95,7 @@ public class IdentityKeyStore implements org.whispersystems.libsignal.state.Iden
     public boolean setIdentityTrustLevel(
             RecipientId recipientId, IdentityKey identityKey, TrustLevel trustLevel
     ) {
-        synchronized (identityMap) {
+        synchronized (cachedIdentities) {
             final var identityInfo = loadIdentityLocked(recipientId);
             if (identityInfo == null || !identityInfo.getIdentityKey().equals(identityKey)) {
                 // Identity not found, not updating the trust level
@@ -105,7 +119,7 @@ public class IdentityKeyStore implements org.whispersystems.libsignal.state.Iden
 
         var recipientId = resolveRecipient(address.getName());
 
-        synchronized (identityMap) {
+        synchronized (cachedIdentities) {
             final var identityInfo = loadIdentityLocked(recipientId);
             if (identityInfo == null) {
                 // Identity not found
@@ -126,26 +140,34 @@ public class IdentityKeyStore implements org.whispersystems.libsignal.state.Iden
     public IdentityKey getIdentity(SignalProtocolAddress address) {
         var recipientId = resolveRecipient(address.getName());
 
-        synchronized (identityMap) {
+        synchronized (cachedIdentities) {
             var identity = loadIdentityLocked(recipientId);
             return identity == null ? null : identity.getIdentityKey();
         }
     }
 
     public IdentityInfo getIdentity(RecipientId recipientId) {
-        synchronized (identityMap) {
+        synchronized (cachedIdentities) {
             return loadIdentityLocked(recipientId);
         }
     }
 
+    final Pattern identityFileNamePattern = Pattern.compile("([0-9]+)");
+
     public List<IdentityInfo> getIdentities() {
-    	synchronized (identityMap) {
-    		return identityMap.getIdentities();
-    	}
+        final var files = identitiesPath.listFiles();
+        if (files == null) {
+            return List.of();
+        }
+        return Arrays.stream(files)
+                .filter(f -> identityFileNamePattern.matcher(f.getName()).matches())
+                .map(f -> RecipientId.of(Integer.parseInt(f.getName())))
+                .map(this::loadIdentityLocked)
+                .collect(Collectors.toList());
     }
 
     public void mergeRecipients(final RecipientId recipientId, final RecipientId toBeMergedRecipientId) {
-        synchronized (identityMap) {
+        synchronized (cachedIdentities) {
             deleteIdentityLocked(toBeMergedRecipientId);
         }
     }
@@ -157,21 +179,104 @@ public class IdentityKeyStore implements org.whispersystems.libsignal.state.Iden
         return resolver.resolveRecipient(identifier);
     }
 
+    private File getIdentityFile(final RecipientId recipientId) {
+        try {
+            IOUtils.createPrivateDirectories(identitiesPath);
+        } catch (IOException e) {
+            throw new AssertionError("Failed to create identities path", e);
+        }
+        return new File(identitiesPath, String.valueOf(recipientId.getId()));
+    }
+
     private IdentityInfo loadIdentityLocked(final RecipientId recipientId) {
-    	return identityMap.get(recipientId.getId());
+        {
+            final var session = cachedIdentities.get(recipientId);
+            if (session != null) {
+                return session;
+            }
+        }
+
+        final var file = getIdentityFile(recipientId);
+        if (!file.exists()) {
+            return null;
+        }
+        try (var inputStream = new FileInputStream(file)) {
+            var storage = objectMapper.readValue(inputStream, IdentityStorage.class);
+
+            var id = new IdentityKey(Base64.getDecoder().decode(storage.getIdentityKey()));
+            var trustLevel = TrustLevel.fromInt(storage.getTrustLevel());
+            var added = new Date(storage.getAddedTimestamp());
+
+            final var identityInfo = new IdentityInfo(recipientId, id, trustLevel, added);
+            cachedIdentities.put(recipientId, identityInfo);
+            return identityInfo;
+        } catch (IOException | InvalidKeyException e) {
+            logger.warn("Failed to load identity key: {}", e.getMessage());
+            return null;
+        }
     }
 
     private void storeIdentityLocked(final RecipientId recipientId, final IdentityInfo identityInfo) {
-        identityMap.put(recipientId.getId(), identityInfo);
+        cachedIdentities.put(recipientId, identityInfo);
+
+        var storage = new IdentityStorage(Base64.getEncoder().encodeToString(identityInfo.getIdentityKey().serialize()),
+                identityInfo.getTrustLevel().ordinal(),
+                identityInfo.getDateAdded().getTime());
+
+        final var file = getIdentityFile(recipientId);
+        // Write to memory first to prevent corrupting the file in case of serialization errors
+        try (var inMemoryOutput = new ByteArrayOutputStream()) {
+            objectMapper.writeValue(inMemoryOutput, storage);
+
+            var input = new ByteArrayInputStream(inMemoryOutput.toByteArray());
+            try (var outputStream = new FileOutputStream(file)) {
+                input.transferTo(outputStream);
+            }
+        } catch (Exception e) {
+            logger.error("Error saving identity file: {}", e.getMessage());
+        }
     }
 
     private void deleteIdentityLocked(final RecipientId recipientId) {
-        identityMap.remove(recipientId.getId());
+        cachedIdentities.remove(recipientId);
+
+        final var file = getIdentityFile(recipientId);
+        if (!file.exists()) {
+            return;
+        }
+        try {
+            Files.delete(file.toPath());
+        } catch (IOException e) {
+            logger.error("Failed to delete identity file {}: {}", file, e.getMessage());
+        }
     }
 
-	@Override
-	public void close() {
-		identityMap.close();
-	}
+    private static final class IdentityStorage {
 
+        private String identityKey;
+        private int trustLevel;
+        private long addedTimestamp;
+
+        // For deserialization
+        private IdentityStorage() {
+        }
+
+        private IdentityStorage(final String identityKey, final int trustLevel, final long addedTimestamp) {
+            this.identityKey = identityKey;
+            this.trustLevel = trustLevel;
+            this.addedTimestamp = addedTimestamp;
+        }
+
+        public String getIdentityKey() {
+            return identityKey;
+        }
+
+        public int getTrustLevel() {
+            return trustLevel;
+        }
+
+        public long getAddedTimestamp() {
+            return addedTimestamp;
+        }
+    }
 }

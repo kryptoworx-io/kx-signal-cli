@@ -1,63 +1,52 @@
 package org.asamk.signal.manager.storage.sessions;
 
-import static java.sql.ResultSet.CONCUR_UPDATABLE;
-import static java.sql.ResultSet.TYPE_FORWARD_ONLY;
-
-import java.io.IOException;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
-import java.util.Set;
-import java.util.stream.Collectors;
-
-import javax.sql.DataSource;
-
 import org.asamk.signal.manager.storage.recipients.RecipientId;
 import org.asamk.signal.manager.storage.recipients.RecipientResolver;
+import org.asamk.signal.manager.util.IOUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.whispersystems.libsignal.NoSessionException;
 import org.whispersystems.libsignal.SignalProtocolAddress;
 import org.whispersystems.libsignal.protocol.CiphertextMessage;
 import org.whispersystems.libsignal.state.SessionRecord;
-import org.whispersystems.signalservice.api.SignalServiceSessionStore;
 
-import io.kryptoworx.signalcli.storage.H2Map;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
-public class SessionStore extends H2Map<Long, SessionRecord> implements SignalServiceSessionStore {
+public class SessionStore implements ISessionStore {
 
     private final static Logger logger = LoggerFactory.getLogger(SessionStore.class);
-    private final static long MAX_RECIPIENT_ID = 0xffffffffffffL;
 
-    private final Object cachedSessions = new Object();
-    private Column<Boolean> activeColumn;
+    private final Map<Key, SessionRecord> cachedSessions = new HashMap<>();
+
+    private final File sessionsPath;
 
     private final RecipientResolver resolver;
 
-    public SessionStore(DataSource dataSource, final RecipientResolver resolver) {
-    	super(dataSource, "sessions", (id, s) -> s.serialize(), (id, bs) -> deserialize(bs));
+    public SessionStore(
+            final File sessionsPath, final RecipientResolver resolver
+    ) {
+        this.sessionsPath = sessionsPath;
         this.resolver = resolver;
-    }
-    
-    @Override
-    protected Column<Long> createPrimaryKeyColumn() {
-    	return new Column<>("id", "BIGINT", PreparedStatement::setLong, ResultSet::getLong);
-    }
-    
-    @Override
-    protected Column<?>[] createIndexColumns() {
-    	return new Column<?>[] {
-    		activeColumn = new Column<>("active", "BOOLEAN", PreparedStatement::setBoolean, ResultSet::getBoolean)
-    	};
     }
 
     @Override
     public SessionRecord loadSession(SignalProtocolAddress address) {
         final var key = getKey(address);
+
         synchronized (cachedSessions) {
             final var session = loadSessionLocked(key);
             if (session == null) {
@@ -94,38 +83,16 @@ public class SessionStore extends H2Map<Long, SessionRecord> implements SignalSe
     @Override
     public List<Integer> getSubDeviceSessions(String name) {
         final var recipientId = resolveRecipient(name);
+
         synchronized (cachedSessions) {
-            List<Long> sessions = transaction(c -> dbGetSessions(c, recipientId.getId(), false));
-            return sessions.stream()
-            		.map(SessionStore::getDeviceId)
-            		.filter(i -> i != 1)
-            		.collect(Collectors.toList());
+            return getKeysLocked(recipientId).stream()
+                    // get all sessions for recipient except main device session
+                    .filter(key -> key.getDeviceId() != 1 && key.getRecipientId().equals(recipientId))
+                    .map(Key::getDeviceId)
+                    .collect(Collectors.toList());
         }
     }
 
-    private List<Long> dbGetSessions(Connection connection, long recipientId, boolean activeOnly) throws SQLException {
-    	String sqlQuery = "SELECT id FROM sessions WHERE id > ?";
-    	long lowerId = getKey(recipientId, 0);
-    	long upperId = -1;
-    	if (recipientId < MAX_RECIPIENT_ID) {
-    		sqlQuery += " AND id < ?";
-    		upperId = getKey(recipientId + 1, 0);
-    	}
-    	if (activeOnly) sqlQuery += " AND active";
-    	List<Long> result = new ArrayList<>();
-    	try (PreparedStatement stmt = connection.prepareStatement(sqlQuery)) {
-    		stmt.setLong(1, lowerId);
-    		if (upperId >= 0) stmt.setLong(2, upperId);;
-    		try (ResultSet rs = stmt.executeQuery()) {
-    			while (rs.next()) {
-    				result.add(rs.getLong(1));
-    			}
-    		}
-    	}
-    	return result;
-    }
-    
-    
     @Override
     public void storeSession(SignalProtocolAddress address, SessionRecord session) {
         final var key = getKey(address);
@@ -162,28 +129,17 @@ public class SessionStore extends H2Map<Long, SessionRecord> implements SignalSe
 
     public void deleteAllSessions(RecipientId recipientId) {
         synchronized (cachedSessions) {
-        	voidTransaction(c -> dbDeleteAllSessions(c, recipientId.getId()));
+            final var keys = getKeysLocked(recipientId);
+            for (var key : keys) {
+                deleteSessionLocked(key);
+            }
         }
-    }
-    
-    private void dbDeleteAllSessions(Connection connection, long recipientId) throws SQLException {
-    	String sqlQuery = "DELETE FROM sessions WHERE id > ?";
-    	long lowerId = getKey(recipientId, 1);
-    	long upperId = -1;
-    	if (recipientId < MAX_RECIPIENT_ID) {
-    		sqlQuery += " AND id < ?";
-    		upperId = getKey(recipientId + 1, 0);
-    	}
-    	try (PreparedStatement stmt = connection.prepareStatement(sqlQuery)) {
-    		stmt.setLong(1, lowerId);
-    		if (upperId >= 0) stmt.setLong(2, upperId);;
-    		stmt.executeUpdate();
-    	}
     }
 
     @Override
     public void archiveSession(final SignalProtocolAddress address) {
         final var key = getKey(address);
+
         synchronized (cachedSessions) {
             archiveSessionLocked(key);
         }
@@ -196,82 +152,54 @@ public class SessionStore extends H2Map<Long, SessionRecord> implements SignalSe
         synchronized (cachedSessions) {
             return recipientIdToNameMap.keySet()
                     .stream()
-                    .flatMap(recipientId -> 
-                		transaction(c -> 
-            				dbGetSessions(c, recipientId.getId(), true)
-            					.stream()
-            					.map(k -> new SignalProtocolAddress(recipientIdToNameMap.get(recipientId), getDeviceId(k)))))
+                    .flatMap(recipientId -> getKeysLocked(recipientId).stream())
+                    .filter(key -> isActive(this.loadSessionLocked(key)))
+                    .map(key -> new SignalProtocolAddress(recipientIdToNameMap.get(key.recipientId), key.getDeviceId()))
                     .collect(Collectors.toSet());
         }
     }
-    
+
     public void archiveAllSessions() {
         synchronized (cachedSessions) {
-        	voidTransaction(c -> dbArchiveSessions(c, -1));
+            final var keys = getKeysLocked();
+            for (var key : keys) {
+                archiveSessionLocked(key);
+            }
         }
-    }
-    
-    private void dbArchiveSessions(Connection connection, long recipientId) throws SQLException {
-    	String sqlQuery = "SELECT id, content FROM sessions";
-    	long lowerId = -1, upperId = -1;
-    	if (recipientId >= 0) {
-    		sqlQuery += " WHERE id >= ?";
-    		lowerId = getKey(recipientId, 0);
-    		if (recipientId < MAX_RECIPIENT_ID) {
-    			sqlQuery += " AND id < ?";
-    			upperId = getKey(recipientId + 1, 0);
-    		}
-    	}
-    	try (PreparedStatement stmt = connection.prepareStatement(sqlQuery, TYPE_FORWARD_ONLY, CONCUR_UPDATABLE)) {
-    		if (lowerId >= 0) stmt.setLong(1, lowerId);
-    		if (upperId >= 0) stmt.setLong(2, upperId);
-    		try (ResultSet rs = stmt.executeQuery()) {
-    			while (rs.next()) {
-    				byte[] sessionBytes = rs.getBytes(2);
-    				if (sessionBytes != null) {
-    					SessionRecord session = deserialize(rs.getBytes(2));
-    					session.archiveCurrentState();
-    					rs.updateBytes(2, session.serialize());
-    					rs.updateRow();
-    				}
-    			}
-    		}
-    	}
     }
 
     public void archiveSessions(final RecipientId recipientId) {
         synchronized (cachedSessions) {
-        	voidTransaction(c -> dbArchiveSessions(c, recipientId.getId()));
+            getKeysLocked().stream()
+                    .filter(key -> key.recipientId.equals(recipientId))
+                    .forEach(this::archiveSessionLocked);
         }
     }
 
     public void mergeRecipients(RecipientId recipientId, RecipientId toBeMergedRecipientId) {
         synchronized (cachedSessions) {
-        	voidTransaction(connection -> {
-	            final var keys = dbGetSessions(connection, toBeMergedRecipientId.getId(), false);
-	            final var otherHasSession = keys.size() > 0;
-	            if (!otherHasSession) {
-	                return;
-	            }
-	
-	            final var hasSession = dbGetSessions(connection, recipientId.getId(), false).size() > 0;
-	            if (hasSession) {
-	                logger.debug("To be merged recipient had sessions, deleting.");
-	                deleteAllSessions(toBeMergedRecipientId);
-	            } else {
-	                logger.debug("Only to be merged recipient had sessions, re-assigning to the new recipient.");
-	                for (var key : keys) {
-	                	var session = new MutableValue<SessionRecord>();
-	                    dbGet(connection, session, key);
-	                    dbRemove(connection, key);
-	                    if (session.get() == null) {
-	                        continue;
-	                    }
-	                    final var newKey = getKey(recipientId.getId(), getDeviceId(key));
-	                    dbPut(connection, newKey, session.get(), isActive(session.get()));
-	                }
-	            }
-        	});
+            final var keys = getKeysLocked(toBeMergedRecipientId);
+            final var otherHasSession = keys.size() > 0;
+            if (!otherHasSession) {
+                return;
+            }
+
+            final var hasSession = getKeysLocked(recipientId).size() > 0;
+            if (hasSession) {
+                logger.debug("To be merged recipient had sessions, deleting.");
+                deleteAllSessions(toBeMergedRecipientId);
+            } else {
+                logger.debug("Only to be merged recipient had sessions, re-assigning to the new recipient.");
+                for (var key : keys) {
+                    final var session = loadSessionLocked(key);
+                    deleteSessionLocked(key);
+                    if (session == null) {
+                        continue;
+                    }
+                    final var newKey = new Key(recipientId, key.getDeviceId());
+                    storeSessionLocked(newKey, session);
+                }
+            }
         }
     }
 
@@ -282,33 +210,92 @@ public class SessionStore extends H2Map<Long, SessionRecord> implements SignalSe
         return resolver.resolveRecipient(identifier);
     }
 
-    private long getKey(final SignalProtocolAddress address) {
+    private Key getKey(final SignalProtocolAddress address) {
         final var recipientId = resolveRecipient(address.getName());
-        return getKey(recipientId.getId(), address.getDeviceId());
-    }
-    
-    private static long getKey(long recipientId, int deviceId) {
-    	if (deviceId > 0xffff || recipientId > MAX_RECIPIENT_ID) {
-    		throw new IllegalArgumentException();
-    	}
-    	return (recipientId << 16) | deviceId;
-    }
-    
-    private static int getDeviceId(long key) {
-    	return (int) (key & 0xffff);
-    }
-    
-
-    private SessionRecord loadSessionLocked(long key) {
-    	return get(key);
+        return new Key(recipientId, address.getDeviceId());
     }
 
-    private void storeSessionLocked(long key, final SessionRecord session) {
-    	put(key, session, isActive(session));
+    private List<Key> getKeysLocked(RecipientId recipientId) {
+        final var files = sessionsPath.listFiles((_file, s) -> s.startsWith(recipientId.getId() + "_"));
+        if (files == null) {
+            return List.of();
+        }
+        return parseFileNames(files);
     }
 
-    private void archiveSessionLocked(long key) {
-        final var session = get(key);
+    private Collection<Key> getKeysLocked() {
+        final var files = sessionsPath.listFiles();
+        if (files == null) {
+            return List.of();
+        }
+        return parseFileNames(files);
+    }
+
+    final Pattern sessionFileNamePattern = Pattern.compile("([0-9]+)_([0-9]+)");
+
+    private List<Key> parseFileNames(final File[] files) {
+        return Arrays.stream(files)
+                .map(f -> sessionFileNamePattern.matcher(f.getName()))
+                .filter(Matcher::matches)
+                .map(matcher -> new Key(RecipientId.of(Long.parseLong(matcher.group(1))),
+                        Integer.parseInt(matcher.group(2))))
+                .collect(Collectors.toList());
+    }
+
+    private File getSessionFile(Key key) {
+        try {
+            IOUtils.createPrivateDirectories(sessionsPath);
+        } catch (IOException e) {
+            throw new AssertionError("Failed to create sessions path", e);
+        }
+        return new File(sessionsPath, key.getRecipientId().getId() + "_" + key.getDeviceId());
+    }
+
+    private SessionRecord loadSessionLocked(final Key key) {
+        {
+            final var session = cachedSessions.get(key);
+            if (session != null) {
+                return session;
+            }
+        }
+
+        final var file = getSessionFile(key);
+        if (!file.exists()) {
+            return null;
+        }
+        try (var inputStream = new FileInputStream(file)) {
+            final var session = new SessionRecord(inputStream.readAllBytes());
+            cachedSessions.put(key, session);
+            return session;
+        } catch (IOException e) {
+            logger.warn("Failed to load session, resetting session: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    private void storeSessionLocked(final Key key, final SessionRecord session) {
+        cachedSessions.put(key, session);
+
+        final var file = getSessionFile(key);
+        try {
+            try (var outputStream = new FileOutputStream(file)) {
+                outputStream.write(session.serialize());
+            }
+        } catch (IOException e) {
+            logger.warn("Failed to store session, trying to delete file and retry: {}", e.getMessage());
+            try {
+                Files.delete(file.toPath());
+                try (var outputStream = new FileOutputStream(file)) {
+                    outputStream.write(session.serialize());
+                }
+            } catch (IOException e2) {
+                logger.error("Failed to store session file {}: {}", file, e2.getMessage());
+            }
+        }
+    }
+
+    private void archiveSessionLocked(final Key key) {
+        final var session = loadSessionLocked(key);
         if (session == null) {
             return;
         }
@@ -316,8 +303,18 @@ public class SessionStore extends H2Map<Long, SessionRecord> implements SignalSe
         storeSessionLocked(key, session);
     }
 
-    private void deleteSessionLocked(long key) {
-    	remove(key);
+    private void deleteSessionLocked(final Key key) {
+        cachedSessions.remove(key);
+
+        final var file = getSessionFile(key);
+        if (!file.exists()) {
+            return;
+        }
+        try {
+            Files.delete(file.toPath());
+        } catch (IOException e) {
+            logger.error("Failed to delete session file {}: {}", file, e.getMessage());
+        }
     }
 
     private static boolean isActive(SessionRecord record) {
@@ -326,12 +323,40 @@ public class SessionStore extends H2Map<Long, SessionRecord> implements SignalSe
                 && record.getSessionVersion() == CiphertextMessage.CURRENT_VERSION;
     }
 
-    private static SessionRecord deserialize(byte[] bytes) {
-    	try {
-			return new SessionRecord(bytes);
-		} catch (IOException e) {
-			logger.warn("Failed to decode session, resetting session", e);
-			return null;
-		}
+    private static final class Key {
+
+        private final RecipientId recipientId;
+        private final int deviceId;
+
+        public Key(final RecipientId recipientId, final int deviceId) {
+            this.recipientId = recipientId;
+            this.deviceId = deviceId;
+        }
+
+        public RecipientId getRecipientId() {
+            return recipientId;
+        }
+
+        public int getDeviceId() {
+            return deviceId;
+        }
+
+        @Override
+        public boolean equals(final Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+
+            final var key = (Key) o;
+
+            if (deviceId != key.deviceId) return false;
+            return recipientId.equals(key.recipientId);
+        }
+
+        @Override
+        public int hashCode() {
+            int result = recipientId.hashCode();
+            result = 31 * result + deviceId;
+            return result;
+        }
     }
 }

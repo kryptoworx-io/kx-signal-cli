@@ -144,7 +144,7 @@ public class Manager implements Closeable {
     private final Context context;
     private boolean hasCaughtUpWithOldMessages = false;
 
-    Manager(
+    protected Manager(
             SignalAccount account,
             PathConfig pathConfig,
             ServiceEnvironmentConfig serviceEnvironmentConfig,
@@ -260,8 +260,7 @@ public class Manager implements Closeable {
             File settingsPath,
             ServiceEnvironment serviceEnvironment,
             String userAgent,
-            final TrustNewIdentity trustNewIdentity,
-            final byte[] masterKey
+            final TrustNewIdentity trustNewIdentity
     ) throws IOException, NotRegisteredException {
         var pathConfig = PathConfig.createDefault(settingsPath);
 
@@ -269,7 +268,7 @@ public class Manager implements Closeable {
             throw new NotRegisteredException();
         }
 
-        var account = SignalAccount.load(pathConfig.getDataPath(), username, true, trustNewIdentity, masterKey);
+        var account = SignalAccount.load(pathConfig.getDataPath(), username, true, trustNewIdentity);
 
         if (!account.isRegistered()) {
             throw new NotRegisteredException();

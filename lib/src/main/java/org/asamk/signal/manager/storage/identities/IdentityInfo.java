@@ -34,7 +34,7 @@ public class IdentityInfo {
         return this.trustLevel;
     }
 
-    boolean isTrusted() {
+    public boolean isTrusted() {
         return trustLevel == TrustLevel.TRUSTED_UNVERIFIED || trustLevel == TrustLevel.TRUSTED_VERIFIED;
     }
 
