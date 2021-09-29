@@ -114,7 +114,8 @@ public class H2RecipientMap extends H2Map<Long, Recipient> implements AutoClosea
 	private long dbNextRecipientId(Connection connection) throws SQLException {
 		String sqlQuery = "SELECT NEXT VALUE FOR sq_recipients";
 		try (PreparedStatement stmt = connection.prepareStatement(sqlQuery);
-				ResultSet rs = stmt.executeQuery()) {
+			ResultSet rs = stmt.executeQuery()) {
+			rs.next();
 			return rs.getLong(1);
 		}
 	}
