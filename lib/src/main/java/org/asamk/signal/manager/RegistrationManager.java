@@ -20,12 +20,7 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.util.Locale;
-import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
-import java.util.prefs.Preferences;
 
-import org.asamk.signal.App;
 import org.asamk.signal.manager.config.ServiceConfig;
 import org.asamk.signal.manager.config.ServiceEnvironment;
 import org.asamk.signal.manager.config.ServiceEnvironmentConfig;
@@ -52,27 +47,22 @@ import org.whispersystems.signalservice.internal.push.RequestVerificationCodeRes
 import org.whispersystems.signalservice.internal.push.VerifyAccountResponse;
 import org.whispersystems.signalservice.internal.util.DynamicCredentialsProvider;
 
-import io.kryptoworx.gcm.GcmClient;
-import io.kryptoworx.gcm.GcmMessageListener;
-import io.kryptoworx.gcm.http.HttpException;
-import io.kryptoworx.gcm.http.OkHttpTransport;
-import okhttp3.OkHttpClient;
-
 public class RegistrationManager implements Closeable {
 
     private final static Logger logger = LoggerFactory.getLogger(RegistrationManager.class);
 
-    private SignalAccount account;
+    protected SignalAccount account;
     private final PathConfig pathConfig;
     private final ServiceEnvironmentConfig serviceEnvironmentConfig;
     private final String userAgent;
 
-    private final SignalServiceAccountManager accountManager;
+    protected final SignalServiceAccountManager accountManager;
     private final PinHelper pinHelper;
-    private static volatile CompletableFuture<String> GCM_CHALLENGE_FUTURE;
-    private static Optional<String> GCM_REGISTRATION_TOKEN = Optional.absent();
-    private final static GcmClient GCM_CLIENT = createGcmClient();
+//    private static volatile CompletableFuture<String> GCM_CHALLENGE_FUTURE;
+//    private static Optional<String> GCM_REGISTRATION_TOKEN = Optional.absent();
+//    private final static GcmClient GCM_CLIENT = createGcmClient();
 
+    /*
     private static GcmClient createGcmClient()  {
         try {
             return tryCreateGcmClient();
@@ -114,8 +104,8 @@ public class RegistrationManager implements Closeable {
         prefs.putLong("securityToken", gcmClient.getSecurityToken());
         return gcmClient;
     }
-
-
+    */
+    
     public RegistrationManager(
             SignalAccount account,
             PathConfig pathConfig,
@@ -178,7 +168,7 @@ public class RegistrationManager implements Closeable {
     /**
      * @return the default data directory to be used by signal-cli.
      */
-    private static File getDefaultDataPath() {
+    protected static File getDefaultDataPath() {
         return new File(IOUtils.getDataHomeDir(), "signal-cli");
     }
 
@@ -209,35 +199,23 @@ public class RegistrationManager implements Closeable {
         return new RegistrationManager(account, pathConfig, serviceConfiguration, userAgent);
     }
 
-    private Optional<String> getGcmChallenge() throws IOException {
-        if (GCM_CLIENT == null) return Optional.absent();
-        GCM_CHALLENGE_FUTURE = new CompletableFuture<>();
-        accountManager.requestRegistrationPushChallenge(GCM_REGISTRATION_TOKEN.get(), account.getUsername());
-        try {
-            return Optional.of(GCM_CHALLENGE_FUTURE.get());
-        } catch (InterruptedException | ExecutionException e) {
-            return Optional.absent();
-        }
-    }
-
     public void register(boolean voiceVerification, String captcha) throws IOException {
         final ServiceResponse<RequestVerificationCodeResponse> response;
-        Optional<String> gcmChallenge = getGcmChallenge();
         if (voiceVerification) {
             response = accountManager.requestVoiceVerificationCode(getDefaultLocale(),
                     Optional.fromNullable(captcha),
-                    gcmChallenge,
+                    Optional.absent(),
                     Optional.absent());
         } else {
             response = accountManager.requestSmsVerificationCode(false,
                     Optional.fromNullable(captcha),
-                    gcmChallenge,
+                    Optional.absent(),
                     Optional.absent());
         }
         handleResponseException(response);
     }
 
-    private Locale getDefaultLocale() {
+    protected Locale getDefaultLocale() {
         final var locale = Locale.getDefault();
         try {
             Locale.LanguageRange.parse(locale.getLanguage() + "-" + locale.getCountry());
@@ -343,7 +321,7 @@ public class RegistrationManager implements Closeable {
         }
     }
 
-    private void handleResponseException(final ServiceResponse<?> response) throws IOException {
+    protected void handleResponseException(final ServiceResponse<?> response) throws IOException {
         final var throwableOptional = response.getExecutionError().or(response.getApplicationError());
         if (throwableOptional.isPresent()) {
             if (throwableOptional.get() instanceof IOException) {

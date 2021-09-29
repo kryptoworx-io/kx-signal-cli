@@ -31,7 +31,7 @@ public class RecipientStoreTest extends H2Test {
 	@BeforeClass
 	public static void setup() throws IOException {
 		dataSource = createDataSource();
-		store = RecipientStore.load(dataSource, (id1, id2) -> {}, 0);
+		store = RecipientStore.load(dataSource, (id1, id2) -> {});
 	}
 	
 	@AfterClass

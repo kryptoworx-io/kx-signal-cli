@@ -30,7 +30,7 @@ import static org.asamk.signal.util.Util.getLegacyIdentifier;
 public class ReceiveMessageHandler implements Manager.ReceiveMessageHandler {
 
     final Manager m;
-    final PlainTextWriter writer;
+    protected final PlainTextWriter writer;
 
     public ReceiveMessageHandler(Manager m, final PlainTextWriter writer) {
         this.m = m;
