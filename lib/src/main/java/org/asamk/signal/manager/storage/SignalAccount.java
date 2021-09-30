@@ -383,6 +383,7 @@ public class SignalAccount implements Closeable {
             String username, File dataPath, final TrustNewIdentity trustNewIdentity
     ) throws IOException {
         JsonNode rootNode;
+        this.username = username;
         synchronized (fileChannel) {
             fileChannel.position(0);
             rootNode = jsonProcessor.readTree(createInputStream());
@@ -403,7 +404,7 @@ public class SignalAccount implements Closeable {
                     + username);
         }
         
-        this.username = username;
+        
         password = Utils.getNotNullNode(rootNode, "password").asText();
         registered = Utils.getNotNullNode(rootNode, "registered").asBoolean();
         if (rootNode.hasNonNull("uuid")) {

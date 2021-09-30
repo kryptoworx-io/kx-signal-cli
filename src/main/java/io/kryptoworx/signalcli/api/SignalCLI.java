@@ -15,5 +15,6 @@ public interface SignalCLI extends Closeable {
     SendMessageResults send(String message, String targetNumber, String attachmentFileName);
     void sendReceipt(String receiptNumber, long messageTimestamp);
     List<SignalServiceReceiptMessage> receive();
+	String getPhoneNumber();
 
 }
