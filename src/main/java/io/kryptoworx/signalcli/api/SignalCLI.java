@@ -5,6 +5,7 @@ import java.util.List;
 
 import org.asamk.signal.manager.api.SendMessageResults;
 import org.whispersystems.signalservice.api.messages.SignalServiceReceiptMessage;
+import org.whispersystems.signalservice.api.push.exceptions.UnregisteredUserException;
 
 public interface SignalCLI extends Closeable {
 
@@ -12,7 +13,7 @@ public interface SignalCLI extends Closeable {
     void registerWithCaptcha(String phoneNumber, String captcha);
     void verify(String code) throws Exception;
     List<String> getRegisteredPhoneNumbers();
-    SendMessageResults send(String message, String targetNumber, String attachmentFileName);
+    SendMessageResults send(String message, String targetNumber, String attachmentFileName) throws UnregisteredUserException;
     void sendReceipt(String receiptNumber, long messageTimestamp);
     List<SignalServiceReceiptMessage> receive();
 	String getPhoneNumber();
