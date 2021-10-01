@@ -13,7 +13,7 @@ public interface SignalCLI extends Closeable {
     void registerWithCaptcha(String phoneNumber, String captcha);
     void verify(String code) throws Exception;
     List<String> getRegisteredPhoneNumbers();
-    SendMessageResults send(String message, String targetNumber, String attachmentFileName) throws UnregisteredUserException;
+    SendMessageResults send(String message, String targetNumber, String attachmentFileName);
     void sendReceipt(String receiptNumber, long messageTimestamp);
     List<SignalServiceReceiptMessage> receive();
 	String getPhoneNumber();
