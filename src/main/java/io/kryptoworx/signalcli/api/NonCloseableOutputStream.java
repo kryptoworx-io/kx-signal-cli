@@ -1,4 +1,4 @@
-package io.kryptoworx.signalcli.storage;
+package io.kryptoworx.signalcli.api;
 
 import java.io.IOException;
 import java.io.OutputStream;

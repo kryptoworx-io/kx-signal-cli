@@ -30,6 +30,7 @@ message PbProfile {
     string family_name = 3;
     string about = 4;
     string about_emoji = 5;
+    string avatar_url_path = 8;
     PbUnidentifiedAccessMode unidentified_access_mode = 6;
     repeated PbCapability capabilities = 7;
 }

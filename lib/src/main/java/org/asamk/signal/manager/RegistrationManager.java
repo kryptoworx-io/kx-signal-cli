@@ -58,8 +58,8 @@ public class RegistrationManager implements Closeable {
 
     protected final SignalServiceAccountManager accountManager;
     private final PinHelper pinHelper;
-    
-    public RegistrationManager(
+
+    protected RegistrationManager(
             SignalAccount account,
             PathConfig pathConfig,
             ServiceEnvironmentConfig serviceEnvironmentConfig,
@@ -90,7 +90,7 @@ public class RegistrationManager implements Closeable {
                 10);
         this.pinHelper = new PinHelper(keyBackupService);
     }
-    
+
     /**
      * @return the default data directory to be used by signal-cli.
      */
@@ -99,18 +99,18 @@ public class RegistrationManager implements Closeable {
     }
 
     public static RegistrationManager init(
-            String username, File settingsPath, ServiceEnvironment serviceEnvironment, String userAgent
+            String number, File settingsPath, ServiceEnvironment serviceEnvironment, String userAgent
     ) throws IOException {
         var pathConfig = PathConfig.createDefault(settingsPath);
 
         final var serviceConfiguration = ServiceConfig.getServiceEnvironmentConfig(serviceEnvironment, userAgent);
-        if (!SignalAccount.userExists(pathConfig.getDataPath(), username)) {
+        if (!SignalAccount.userExists(pathConfig.getDataPath(), number)) {
             var identityKey = KeyUtils.generateIdentityKeyPair();
             var registrationId = KeyHelper.generateRegistrationId(false);
 
             var profileKey = KeyUtils.createProfileKey();
             var account = SignalAccount.create(pathConfig.getDataPath(),
-                    username,
+                    number,
                     identityKey,
                     registrationId,
                     profileKey,
@@ -119,7 +119,7 @@ public class RegistrationManager implements Closeable {
             return new RegistrationManager(account, pathConfig, serviceConfiguration, userAgent);
         }
 
-        var account = SignalAccount.load(pathConfig.getDataPath(), username, true, TrustNewIdentity.ON_FIRST_USE);
+        var account = SignalAccount.load(pathConfig.getDataPath(), number, true, TrustNewIdentity.ON_FIRST_USE);
 
         return new RegistrationManager(account, pathConfig, serviceConfiguration, userAgent);
     }
@@ -185,20 +185,20 @@ public class RegistrationManager implements Closeable {
         //accountManager.setGcmId(Optional.of(GoogleCloudMessaging.getInstance(this).register(REGISTRATION_ID)));
         account.finishRegistration(UuidUtil.parseOrNull(response.getUuid()), masterKey, pin);
 
-        Manager m = null;
+        ManagerImpl m = null;
         try {
-            m = new Manager(account, pathConfig, serviceEnvironmentConfig, userAgent);
+            m = new ManagerImpl(account, pathConfig, serviceEnvironmentConfig, userAgent);
             account = null;
 
             m.refreshPreKeys();
+            if (response.isStorageCapable()) {
+                m.retrieveRemoteStorage();
+            }
             // Set an initial empty profile so user can be added to groups
             try {
                 m.setProfile(null, null, null, null, null);
             } catch (NoClassDefFoundError e) {
                 logger.warn("Failed to set default profile: {}", e.getMessage());
-            }
-            if (response.isStorageCapable()) {
-                m.retrieveRemoteStorage();
             }
 
             final var result = m;

@@ -127,9 +127,9 @@ public class ProvisioningManager {
                     profileKey,
                     TrustNewIdentity.ON_FIRST_USE);
 
-            Manager m = null;
+            ManagerImpl m = null;
             try {
-                m = new Manager(account, pathConfig, serviceEnvironmentConfig, userAgent);
+                m = new ManagerImpl(account, pathConfig, serviceEnvironmentConfig, userAgent);
 
                 logger.debug("Refreshing pre keys");
                 try {
@@ -179,7 +179,7 @@ public class ProvisioningManager {
                 return false;
             }
 
-            final var m = new Manager(signalAccount, pathConfig, serviceEnvironmentConfig, userAgent);
+            final var m = new ManagerImpl(signalAccount, pathConfig, serviceEnvironmentConfig, userAgent);
             try (m) {
                 m.checkAccountState();
             } catch (AuthorizationFailedException ignored) {

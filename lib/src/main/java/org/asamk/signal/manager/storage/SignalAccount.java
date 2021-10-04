@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.asamk.signal.manager.TrustLevel;
+import org.asamk.signal.manager.configuration.ConfigurationStore;
 import org.asamk.signal.manager.groups.GroupId;
 import org.asamk.signal.manager.storage.contacts.ContactsStore;
 import org.asamk.signal.manager.storage.contacts.LegacyJsonContactsStore;
@@ -69,12 +70,12 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.UUID;
 
-import io.kryptoworx.signalcli.storage.NonCloseableOutputStream;
+import io.kryptoworx.signalcli.api.NonCloseableOutputStream;
 
 public class SignalAccount implements Closeable {
 
     private final static Logger logger = LoggerFactory.getLogger(SignalAccount.class);
-    
+
     private static final int MINIMUM_STORAGE_VERSION = 1;
     private static final int CURRENT_STORAGE_VERSION = 2;
 
@@ -111,6 +112,8 @@ public class SignalAccount implements Closeable {
     protected IRecipientStore recipientStore;
     protected StickerStore stickerStore;
     private StickerStore.Storage stickerStoreStorage;
+    private ConfigurationStore configurationStore;
+    private ConfigurationStore.Storage configurationStoreStorage;
 
     protected MessageCache messageCache;
 
@@ -118,7 +121,7 @@ public class SignalAccount implements Closeable {
         this.fileChannel = fileChannel;
         this.lock = lock;
     }
-    
+
     public static SignalAccount load(
             File dataPath, String username, boolean waitForLock, final TrustNewIdentity trustNewIdentity
     ) throws IOException {
@@ -162,6 +165,7 @@ public class SignalAccount implements Closeable {
                 account.recipientStore,
                 account::saveGroupStore);
         account.stickerStore = new StickerStore(account::saveStickerStore);
+        account.configurationStore = new ConfigurationStore(account::saveConfigurationStore);
 
         account.registered = false;
 
@@ -270,6 +274,7 @@ public class SignalAccount implements Closeable {
                 account.recipientStore,
                 account::saveGroupStore);
         account.stickerStore = new StickerStore(account::saveStickerStore);
+        account.configurationStore = new ConfigurationStore(account::saveConfigurationStore);
 
         account.recipientStore.resolveRecipientTrusted(account.getSelfAddress());
         account.migrateLegacyConfigs();
@@ -501,6 +506,15 @@ public class SignalAccount implements Closeable {
             stickerStore = new StickerStore(this::saveStickerStore);
         }
 
+        if (rootNode.hasNonNull("configurationStore")) {
+            configurationStoreStorage = jsonProcessor.convertValue(rootNode.get("configurationStore"),
+                    ConfigurationStore.Storage.class);
+            configurationStore = ConfigurationStore.fromStorage(configurationStoreStorage,
+                    this::saveConfigurationStore);
+        } else {
+            configurationStore = new ConfigurationStore(this::saveConfigurationStore);
+        }
+
         migratedLegacyConfig = loadLegacyThreadStore(rootNode) || migratedLegacyConfig;
 
         if (migratedLegacyConfig) {
@@ -627,6 +641,7 @@ public class SignalAccount implements Closeable {
                             profile.getFamilyName(),
                             profile.getAbout(),
                             profile.getAboutEmoji(),
+                            null,
                             profile.isUnrestrictedUnidentifiedAccess()
                                     ? Profile.UnidentifiedAccessMode.UNRESTRICTED
                                     : profile.getUnidentifiedAccess() != null
@@ -687,6 +702,11 @@ public class SignalAccount implements Closeable {
         save();
     }
 
+    private void saveConfigurationStore(ConfigurationStore.Storage storage) {
+        this.configurationStoreStorage = storage;
+        save();
+    }
+
     protected void save() {
         synchronized (fileChannel) {
             var rootNode = jsonProcessor.createObjectNode();
@@ -717,22 +737,23 @@ public class SignalAccount implements Closeable {
                             profileKey == null ? null : Base64.getEncoder().encodeToString(profileKey.serialize()))
                     .put("registered", registered)
                     .putPOJO("groupStore", groupStoreStorage)
-                    .putPOJO("stickerStore", stickerStoreStorage);
+                    .putPOJO("stickerStore", stickerStoreStorage)
+                    .putPOJO("configurationStore", configurationStoreStorage);
             try {
-                // Write to memory first to prevent corrupting the file in case of serialization errors
+                    // Write to memory first to prevent corrupting the file in case of serialization errors
                 var input = new ByteArrayInputStream(jsonProcessor.writeValueAsBytes(rootNode));
-                fileChannel.position(0);
+                    fileChannel.position(0);
                 try (OutputStream out = createOutputStream()) {
                 	input.transferTo(out);
                 }	
-                fileChannel.truncate(fileChannel.position());
-                fileChannel.force(false);
+                    fileChannel.truncate(fileChannel.position());
+                    fileChannel.force(false);
             } catch (Exception e) {
                 logger.error("Error saving file: {}", e.getMessage());
             }
         }
     }
-    
+
     protected OutputStream createOutputStream() throws IOException {
     	return NonCloseableOutputStream.create(fileChannel);
     }
@@ -812,6 +833,10 @@ public class SignalAccount implements Closeable {
 
     public SenderKeyStore getSenderKeyStore() {
         return senderKeyStore;
+    }
+
+    public ConfigurationStore getConfigurationStore() {
+        return configurationStore;
     }
 
     public MessageCache getMessageCache() {

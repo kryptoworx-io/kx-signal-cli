@@ -877,6 +877,18 @@ public final class Storage {
         getAboutEmojiBytes();
 
     /**
+     * <code>string avatar_url_path = 8;</code>
+     * @return The avatarUrlPath.
+     */
+    java.lang.String getAvatarUrlPath();
+    /**
+     * <code>string avatar_url_path = 8;</code>
+     * @return The bytes for avatarUrlPath.
+     */
+    com.google.protobuf.ByteString
+        getAvatarUrlPathBytes();
+
+    /**
      * <code>.io.kryptoworx.signalcli.storage.proto.PbUnidentifiedAccessMode unidentified_access_mode = 6;</code>
      * @return The enum numeric value on the wire for unidentifiedAccessMode.
      */
@@ -929,6 +941,7 @@ public final class Storage {
       familyName_ = "";
       about_ = "";
       aboutEmoji_ = "";
+      avatarUrlPath_ = "";
       capabilities_ = emptyIntList();
     }
     public static final int LAST_UPDATE_TIMESTAMP_FIELD_NUMBER = 1;
@@ -1163,6 +1176,58 @@ public final class Storage {
   checkByteStringIsUtf8(value);
       
       aboutEmoji_ = value.toStringUtf8();
+    }
+
+    public static final int AVATAR_URL_PATH_FIELD_NUMBER = 8;
+    private java.lang.String avatarUrlPath_;
+    /**
+     * <code>string avatar_url_path = 8;</code>
+     * @return The avatarUrlPath.
+     */
+    @java.lang.Override
+    public java.lang.String getAvatarUrlPath() {
+      return avatarUrlPath_;
+    }
+    /**
+     * <code>string avatar_url_path = 8;</code>
+     * @return The bytes for avatarUrlPath.
+     */
+    @java.lang.Override
+    public com.google.protobuf.ByteString
+        getAvatarUrlPathBytes() {
+      return com.google.protobuf.ByteString.copyFromUtf8(avatarUrlPath_);
+    }
+    /**
+     * <code>string avatar_url_path = 8;</code>
+     * @param value The avatarUrlPath to set.
+     */
+    private void setAvatarUrlPath(
+        java.lang.String value) {
+      if (value == null) {
+    throw new NullPointerException();
+  }
+  
+      avatarUrlPath_ = value;
+    }
+    /**
+     * <code>string avatar_url_path = 8;</code>
+     */
+    private void clearAvatarUrlPath() {
+      
+      avatarUrlPath_ = getDefaultInstance().getAvatarUrlPath();
+    }
+    /**
+     * <code>string avatar_url_path = 8;</code>
+     * @param value The bytes for avatarUrlPath to set.
+     */
+    private void setAvatarUrlPathBytes(
+        com.google.protobuf.ByteString value) {
+      if (value == null) {
+    throw new NullPointerException();
+  }
+  checkByteStringIsUtf8(value);
+      
+      avatarUrlPath_ = value.toStringUtf8();
     }
 
     public static final int UNIDENTIFIED_ACCESS_MODE_FIELD_NUMBER = 6;
@@ -1663,6 +1728,55 @@ public final class Storage {
       }
 
       /**
+       * <code>string avatar_url_path = 8;</code>
+       * @return The avatarUrlPath.
+       */
+      @java.lang.Override
+      public java.lang.String getAvatarUrlPath() {
+        return instance.getAvatarUrlPath();
+      }
+      /**
+       * <code>string avatar_url_path = 8;</code>
+       * @return The bytes for avatarUrlPath.
+       */
+      @java.lang.Override
+      public com.google.protobuf.ByteString
+          getAvatarUrlPathBytes() {
+        return instance.getAvatarUrlPathBytes();
+      }
+      /**
+       * <code>string avatar_url_path = 8;</code>
+       * @param value The avatarUrlPath to set.
+       * @return This builder for chaining.
+       */
+      public Builder setAvatarUrlPath(
+          java.lang.String value) {
+        copyOnWrite();
+        instance.setAvatarUrlPath(value);
+        return this;
+      }
+      /**
+       * <code>string avatar_url_path = 8;</code>
+       * @return This builder for chaining.
+       */
+      public Builder clearAvatarUrlPath() {
+        copyOnWrite();
+        instance.clearAvatarUrlPath();
+        return this;
+      }
+      /**
+       * <code>string avatar_url_path = 8;</code>
+       * @param value The bytes for avatarUrlPath to set.
+       * @return This builder for chaining.
+       */
+      public Builder setAvatarUrlPathBytes(
+          com.google.protobuf.ByteString value) {
+        copyOnWrite();
+        instance.setAvatarUrlPathBytes(value);
+        return this;
+      }
+
+      /**
        * <code>.io.kryptoworx.signalcli.storage.proto.PbUnidentifiedAccessMode unidentified_access_mode = 6;</code>
        * @return The enum numeric value on the wire for unidentifiedAccessMode.
        */
@@ -1849,10 +1963,11 @@ public final class Storage {
               "aboutEmoji_",
               "unidentifiedAccessMode_",
               "capabilities_",
+              "avatarUrlPath_",
             };
             java.lang.String info =
-                "\u0000\u0007\u0000\u0000\u0001\u0007\u0007\u0000\u0001\u0000\u0001\u0002\u0002\u0208" +
-                "\u0003\u0208\u0004\u0208\u0005\u0208\u0006\f\u0007,";
+                "\u0000\b\u0000\u0000\u0001\b\b\u0000\u0001\u0000\u0001\u0002\u0002\u0208\u0003\u0208" +
+                "\u0004\u0208\u0005\u0208\u0006\f\u0007,\b\u0208";
             return newMessageInfo(DEFAULT_INSTANCE, info, objects);
         }
         // fall through

@@ -43,7 +43,7 @@
         <dependency>
             <groupId>com.github.turasa</groupId>
             <artifactId>signal-service-java</artifactId>
-            <version>2.15.3_unofficial_27</version>
+            <version>2.15.3_unofficial_28</version>
         </dependency>
         <dependency>
             <groupId>com.google.protobuf</groupId>
