@@ -152,8 +152,13 @@ public class RegistrationManager implements Closeable {
         return locale;
     }
 
+    public Manager verifyAccount(String verificationCode, String pin) throws IOException, 
+    		LockedException, KeyBackupSystemNoDataException, KeyBackupServicePinException {
+    	return verifyAccount(verificationCode, pin, null);
+    }
+    
     public Manager verifyAccount(
-            String verificationCode, String pin
+            String verificationCode, String pin, String profileName
     ) throws IOException, LockedException, KeyBackupSystemNoDataException, KeyBackupServicePinException {
         verificationCode = verificationCode.replace("-", "");
         VerifyAccountResponse response;
@@ -196,7 +201,7 @@ public class RegistrationManager implements Closeable {
             }
             // Set an initial empty profile so user can be added to groups
             try {
-                m.setProfile(null, null, null, null, null);
+                m.setProfile(profileName, null, null, null, null);
             } catch (NoClassDefFoundError e) {
                 logger.warn("Failed to set default profile: {}", e.getMessage());
             }
