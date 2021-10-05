@@ -8,7 +8,7 @@ import org.whispersystems.signalservice.api.messages.SignalServiceReceiptMessage
 
 public interface SignalCLI extends Closeable {
 
-    void register(String number, Boolean voiceVerify);
+    void register(String number, Boolean voiceVerify, String name);
     void registerWithCaptcha(String phoneNumber, String captcha);
     void verify(String code, String profileName) throws Exception;
     List<String> getRegisteredPhoneNumbers();
