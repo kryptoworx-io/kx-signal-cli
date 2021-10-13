@@ -7,20 +7,19 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <maven.deploy.skip>true</maven.deploy.skip>
     </properties>
 
     <distributionManagement>
         <repository>
-            <id>codeartifact</id>
-            <url>https://kryptoworx-091901213698.d.codeartifact.eu-central-1.amazonaws.com/maven/kryptoworx</url>
+            <id>kx-jfrog</id>
+			<url>https://kryptoworx.jfrog.io/artifactory/default-maven-local</url>
         </repository>
     </distributionManagement>
 
 	<repositories>
 		<repository>
-			<id>codeartifact</id>
-			<url>https://kryptoworx-091901213698.d.codeartifact.eu-central-1.amazonaws.com/maven/kryptoworx</url>
+			<id>kx-jfrog</id>
+			<url>https://kryptoworx.jfrog.io/artifactory/default-maven-local</url>
 		</repository>
 	</repositories>
 
@@ -49,11 +48,6 @@
             <groupId>com.google.protobuf</groupId>
             <artifactId>protobuf-javalite</artifactId>
             <version>3.10.0</version>
-        </dependency>
-        <dependency>
-            <groupId>io.kryptoworx</groupId>
-            <artifactId>gcm-client</artifactId>
-            <version>1.0.0-SNAPSHOT</version>
         </dependency>
 		<dependency>
             <groupId>junit</groupId>
