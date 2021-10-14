@@ -11,10 +11,8 @@ public interface SignalCLI extends Closeable {
     void register(String number, Boolean voiceVerify, String name);
     void registerWithCaptcha(String phoneNumber, String captcha);
     void verify(String code, String profileName) throws Exception;
-    List<String> getRegisteredPhoneNumbers();
     SendMessageResults send(String message, String targetNumber, String attachmentFileName);
     void sendReceipt(String receiptNumber, long messageTimestamp);
     List<SignalServiceReceiptMessage> receive();
 	String getPhoneNumber();
-
 }
